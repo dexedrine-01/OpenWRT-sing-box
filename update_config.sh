@@ -136,3 +136,13 @@ fi
 # 12. Вывод финального сообщения
 printf "${GREEN}Обновление профиля завершено успешно!${RESET}\n"
 printf "Панель для управления VPN: http://%s:9090\n" "$ROUTER_IP"
+
+# 13. Вопрос для пользователя о ежедневном обновлении
+printf "${BLUE}– Запускать ли обновление раз в сутки в полночь? (Если конфигурация изменена вручную под личные нужды, то изменения не сохранятся) [y/N]: ${RESET}"
+read CRON_CHOICE < /dev/tty
+if [ "$CRON_CHOICE" = "y" ] || [ "$CRON_CHOICE" = "Y" ]; then
+    (crontab -l 2>/dev/null; echo "0 0 * * * wget -qO- https://raw.githubusercontent.com/dexedrine-01/PurrNet/main/update.sh | sh") | crontab -
+    printf "${BLUE}– Ежедневное обновление настроено.${RESET}\n"
+else
+    printf "${BLUE}– Ежедневное обновление не настроено.${RESET}\n"
+fi
