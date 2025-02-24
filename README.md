@@ -10,9 +10,9 @@
 sh <(wget -O - https://raw.githubusercontent.com/itdoginfo/domain-routing-openwrt/master/getdomains-install.sh)
 ```
 
-**Туннель: **sing-box
-**Установка DNSCrypt2 или Stubby:** No
-**Выбор страны:** Skip script creation
+- Туннель: **sing-box**
+- Установка DNSCrypt2 или Stubby: **No**
+- Выбор страны: **Skip script creation**
 
 ------------
 
