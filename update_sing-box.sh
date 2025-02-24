@@ -59,7 +59,7 @@ echo "Выберите тип версии:"
 echo "1. Релизная (stable)"
 echo "2. Альфа (alpha)"
 echo "3. Бета (beta)"
-read -p "Введите ваш выбор (1, 2, 3): " choice
+read -p "Введите ваш выбор (1, 2, 3): " choice < /dev/tty
 
 case "$choice" in
   1)
