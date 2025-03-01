@@ -33,6 +33,38 @@ create_dirs() {
     [ ! -d "$(dirname "$log_file")" ] && mkdir -p "$(dirname "$log_file")"
 }
 
+# Function to check available disk space
+check_disk_space() {
+    local required_space=30000  # Required space in KB (approximately 30MB)
+    local install_path="${install_dir}"
+    local temp_path="${temp_dir}"
+    
+    # Check space in installation directory
+    local available_space_install=$(df -k "$(dirname "$install_path")" | awk 'NR==2 {print $4}')
+    # Check space in temporary directory
+    local available_space_temp=$(df -k "$(dirname "$temp_path")" | awk 'NR==2 {print $4}')
+    
+    if [ -z "$available_space_install" ] || [ -z "$available_space_temp" ]; then
+        log_msg "$YELLOW" "[!] Предупреждение: Не удалось проверить доступное пространство"
+        return 0
+    fi
+    
+    if [ "$available_space_install" -lt "$required_space" ]; then
+        log_msg "$RED" "[✗] Ошибка: Недостаточно места в $(dirname "$install_path")"
+        log_msg "$RED" "    Доступно: $(($available_space_install / 1024)) МБ, требуется минимум: $(($required_space / 1024)) МБ"
+        return 1
+    fi
+    
+    if [ "$available_space_temp" -lt "$required_space" ]; then
+        log_msg "$RED" "[✗] Ошибка: Недостаточно места во временной директории $(dirname "$temp_path")"
+        log_msg "$RED" "    Доступно: $(($available_space_temp / 1024)) МБ, требуется минимум: $(($required_space / 1024)) МБ"
+        return 1
+    fi
+    
+    log_msg "$GREEN" "[✓] Достаточно свободного места для обновления"
+    return 0
+}
+
 # Function to detect system architecture
 detect_architecture() {
     arch=$(uname -m)
@@ -148,19 +180,55 @@ download_and_install() {
         exit 1
     fi
     
-    # Download the file
+    # Get file size before downloading
+    local file_size=$(curl -sI "$download_url" | grep -i "Content-Length" | awk '{print $2}' | tr -d '\r')
+    if [ -n "$file_size" ]; then
+        local file_size_mb=$(echo "scale=2; $file_size/1048576" | bc 2>/dev/null || echo "$(($file_size / 1048576))")
+        log_msg "$BLUE" "Размер файла для загрузки: ${file_size_mb} МБ"
+    fi
+    
+    # Download the file with progress indication
     local filename=$(basename "$download_url")
     log_msg "$BLUE" "Загрузка файла: $filename"
     
-    if ! wget -O "${temp_dir}/${filename}" "$download_url" 2>>"$log_file"; then
-        log_msg "$RED" "[✗] Ошибка: не удалось загрузить файл $filename"
+    if command_exists wget; then
+        if ! wget -O "${temp_dir}/${filename}" "$download_url" --progress=bar:force 2>>"$log_file"; then
+            log_msg "$RED" "[✗] Ошибка: не удалось загрузить файл $filename"
+            exit 1
+        fi
+    elif command_exists curl; then
+        if ! curl -L -o "${temp_dir}/${filename}" "$download_url" --progress-bar 2>>"$log_file"; then
+            log_msg "$RED" "[✗] Ошибка: не удалось загрузить файл $filename"
+            exit 1
+        fi
+    else
+        log_msg "$RED" "[✗] Ошибка: не найдены инструменты для загрузки (wget или curl)"
         exit 1
     fi
     
     log_msg "$GREEN" "[✓] Файл $filename успешно загружен"
     
+    # Verify file integrity
+    if [ -f "${temp_dir}/${filename}" ]; then
+        local downloaded_size=$(wc -c < "${temp_dir}/${filename}")
+        if [ -n "$file_size" ] && [ "$downloaded_size" -ne "$file_size" ]; then
+            log_msg "$RED" "[✗] Ошибка: размер загруженного файла не соответствует ожидаемому"
+            log_msg "$RED" "    Ожидаемый размер: $file_size байт, фактический: $downloaded_size байт"
+            exit 1
+        fi
+    else
+        log_msg "$RED" "[✗] Ошибка: файл не был загружен"
+        exit 1
+    fi
+    
     # Extract and install
-    folder_name=$(tar -tzf "${temp_dir}/${filename}" | head -1 | cut -f1 -d"/")
+    log_msg "$BLUE" "Распаковка архива..."
+    folder_name=$(tar -tzf "${temp_dir}/${filename}" 2>>"$log_file" | head -1 | cut -f1 -d"/")
+    
+    if [ -z "$folder_name" ]; then
+        log_msg "$RED" "[✗] Ошибка: не удалось определить имя папки в архиве"
+        exit 1
+    fi
     
     if ! tar -xzf "${temp_dir}/${filename}" -C "$temp_dir" 2>>"$log_file"; then
         log_msg "$RED" "[✗] Ошибка при распаковке архива"
@@ -169,14 +237,29 @@ download_and_install() {
     
     # Backup existing installation
     if [ -f "${install_dir}/sing-box" ]; then
+        log_msg "$BLUE" "Создание резервной копии текущей версии..."
         mv "${install_dir}/sing-box" "$backup_file"
     fi
     
     # Install new version
+    log_msg "$BLUE" "Установка новой версии..."
+    if [ ! -f "${temp_dir}/${folder_name}/sing-box" ]; then
+        log_msg "$RED" "[✗] Ошибка: исполняемый файл sing-box не найден в распакованном архиве"
+        exit 1
+    fi
+    
     cp "${temp_dir}/${folder_name}/sing-box" "${install_dir}/"
     chmod +x "${install_dir}/sing-box"
     
+    # Verify installation
+    if [ ! -x "${install_dir}/sing-box" ]; then
+        log_msg "$RED" "[✗] Ошибка: не удалось установить новую версию sing-box"
+        rollback
+        exit 1
+    fi
+    
     # Clean up
+    log_msg "$BLUE" "Очистка временных файлов..."
     rm -rf "${temp_dir:?}/${folder_name}" "${temp_dir}/${filename}"
     
     return 0
@@ -203,6 +286,51 @@ restart_services() {
     return 0
 }
 
+# Function to check available memory
+check_memory() {
+    local required_memory=20000  # Required memory in KB (approximately 20MB)
+    
+    # Get available memory (try different methods)
+    local available_memory=0
+    
+    if [ -f "/proc/meminfo" ]; then
+        available_memory=$(grep -i 'MemAvailable' /proc/meminfo | awk '{print $2}')
+        
+        # If MemAvailable is not found, calculate from MemFree + Buffers + Cached
+        if [ -z "$available_memory" ]; then
+            local mem_free=$(grep -i 'MemFree' /proc/meminfo | awk '{print $2}')
+            local buffers=$(grep -i 'Buffers' /proc/meminfo | awk '{print $2}')
+            local cached=$(grep -i 'Cached' /proc/meminfo | awk '{print $2}' | head -1)
+            
+            if [ -n "$mem_free" ] && [ -n "$buffers" ] && [ -n "$cached" ]; then
+                available_memory=$((mem_free + buffers + cached))
+            fi
+        fi
+    fi
+    
+    # If still no valid value, try free command
+    if [ -z "$available_memory" ] || [ "$available_memory" -eq 0 ]; then
+        if command_exists free; then
+            available_memory=$(free | grep -i 'Mem:' | awk '{print $7}')
+        fi
+    fi
+    
+    # If we still can't determine memory, warn but continue
+    if [ -z "$available_memory" ] || [ "$available_memory" -eq 0 ]; then
+        log_msg "$YELLOW" "[!] Предупреждение: Не удалось проверить доступную память"
+        return 0
+    fi
+    
+    if [ "$available_memory" -lt "$required_memory" ]; then
+        log_msg "$RED" "[✗] Ошибка: Недостаточно оперативной памяти для обновления"
+        log_msg "$RED" "    Доступно: $(($available_memory / 1024)) МБ, требуется минимум: $(($required_memory / 1024)) МБ"
+        return 1
+    fi
+    
+    log_msg "$GREEN" "[✓] Достаточно оперативной памяти для обновления"
+    return 0
+}
+
 # Main function
 main() {
     create_dirs
@@ -215,6 +343,17 @@ main() {
     
     # Detect architecture
     detect_architecture
+    
+    # Check for available disk space and memory
+    if ! check_disk_space; then
+        log_msg "$RED" "[✗] Обновление отменено из-за нехватки дискового пространства"
+        exit 1
+    fi
+    
+    if ! check_memory; then
+        log_msg "$RED" "[✗] Обновление отменено из-за нехватки памяти"
+        exit 1
+    }
     
     # Menu for version selection
     echo "Выберите тип версии:"
