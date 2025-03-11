@@ -353,7 +353,7 @@ main() {
     if ! check_memory; then
         log_msg "$RED" "[✗] Обновление отменено из-за нехватки памяти"
         exit 1
-    }
+    fi
     
     # Menu for version selection
     echo "Выберите тип версии:"
