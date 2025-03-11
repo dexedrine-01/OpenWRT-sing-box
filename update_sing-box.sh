@@ -216,14 +216,15 @@ download_and_install() {
     
     log_msg "$GREEN" "[✓] Файл $filename успешно загружен"
 
-    # Проверяем целостность (по размеру)
+    # Проверяем целостность (по размеру), если Content-Length не нулевой
     if [ -f "${temp_dir}/${filename}" ]; then
-        local downloaded_size
         downloaded_size=$(wc -c < "${temp_dir}/${filename}")
-        if [ -n "$file_size" ] && [ "$downloaded_size" -ne "$file_size" ]; then
-            log_msg "$RED" "[✗] Ошибка: размер загруженного файла не соответствует ожидаемому"
-            log_msg "$RED" "    Ожидаемый размер: $file_size байт, фактический: $downloaded_size байт"
-            exit 1
+        if [ -n "$file_size" ] && [ "$file_size" -gt 0 ]; then
+            if [ "$downloaded_size" -ne "$file_size" ]; then
+                log_msg "$RED" "[✗] Ошибка: размер загруженного файла не соответствует ожидаемому"
+                log_msg "$RED" "    Ожидаемый размер: $file_size байт, фактический: $downloaded_size байт"
+                exit 1
+            fi
         fi
     else
         log_msg "$RED" "[✗] Ошибка: файл не был загружен"
