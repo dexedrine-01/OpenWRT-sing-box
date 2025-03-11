@@ -160,54 +160,58 @@ get_latest_version() {
     echo "$latest_version"
 }
 
-# Function to download and install sing-box
+# Function to download and install sing-box with detailed logging
 download_and_install() {
     local version_type="$1"
     local version_url="https://api.github.com/repos/${github_repo}/releases"
     local download_url=""
-    
+
     case "$version_type" in
         "stable")
             version_url="${version_url}/latest"
             ;;
     esac
-    
+
     # Get download URL for the required architecture
     download_url=$(curl -s "$version_url" | grep "browser_download_url.*$file" | cut -d '"' -f 4 | head -n 1)
-    
+
     if [ -z "$download_url" ]; then
         log_msg "$RED" "[✗] Ошибка: Не удалось найти ссылку для скачивания для архитектуры $arch"
         exit 1
     fi
-    
+
+    log_msg "$BLUE" "Ссылка для загрузки: $download_url"
+
     # Get file size before downloading
     local file_size=$(curl -sI "$download_url" | grep -i "Content-Length" | awk '{print $2}' | tr -d '\r')
     if [ -n "$file_size" ]; then
         local file_size_mb=$(echo "scale=2; $file_size/1048576" | bc 2>/dev/null || echo "$(($file_size / 1048576))")
         log_msg "$BLUE" "Размер файла для загрузки: ${file_size_mb} МБ"
+    else
+        log_msg "$YELLOW" "[!] Предупреждение: Не удалось определить размер файла перед загрузкой"
     fi
-    
+
     # Download the file with progress indication
     local filename=$(basename "$download_url")
-    log_msg "$BLUE" "Загрузка файла: $filename"
-    
+    log_msg "$BLUE" "Начинается загрузка файла: $filename"
+
     if command_exists wget; then
         if ! wget -O "${temp_dir}/${filename}" "$download_url" --progress=bar:force 2>>"$log_file"; then
-            log_msg "$RED" "[✗] Ошибка: не удалось загрузить файл $filename"
+            log_msg "$RED" "[✗] Ошибка: не удалось загрузить файл $filename с URL: $download_url"
             exit 1
         fi
     elif command_exists curl; then
         if ! curl -L -o "${temp_dir}/${filename}" "$download_url" --progress-bar 2>>"$log_file"; then
-            log_msg "$RED" "[✗] Ошибка: не удалось загрузить файл $filename"
+            log_msg "$RED" "[✗] Ошибка: не удалось загрузить файл $filename с URL: $download_url"
             exit 1
         fi
     else
         log_msg "$RED" "[✗] Ошибка: не найдены инструменты для загрузки (wget или curl)"
         exit 1
     fi
-    
+
     log_msg "$GREEN" "[✓] Файл $filename успешно загружен"
-    
+
     # Verify file integrity
     if [ -f "${temp_dir}/${filename}" ]; then
         local downloaded_size=$(wc -c < "${temp_dir}/${filename}")
@@ -217,7 +221,7 @@ download_and_install() {
             exit 1
         fi
     else
-        log_msg "$RED" "[✗] Ошибка: файл не был загружен"
+        log_msg "$RED" "[✗] Ошибка: файл не был загружен с URL: $download_url"
         exit 1
     fi
     
