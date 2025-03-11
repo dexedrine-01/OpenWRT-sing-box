@@ -19,7 +19,8 @@ RESET="\033[0m"
 log_msg() {
     local color="$1"
     local message="$2"
-    echo -e "${color}${message}${RESET}" | tee -a "$log_file"
+    # Используем printf, чтобы избежать проблем с echo -e
+    printf "%b\n" "${color}${message}${RESET}" | tee -a "$log_file"
 }
 
 # Function to check if a command exists
@@ -35,14 +36,17 @@ create_dirs() {
 
 # Function to check available disk space
 check_disk_space() {
-    local required_space=30000  # Required space in KB (approximately 30MB)
+    local required_space=30000  # Required space in KB (approx 30MB)
     local install_path="${install_dir}"
     local temp_path="${temp_dir}"
     
     # Check space in installation directory
-    local available_space_install=$(df -k "$(dirname "$install_path")" | awk 'NR==2 {print $4}')
+    local available_space_install
+    available_space_install=$(df -k "$(dirname "$install_path")" | awk 'NR==2 {print $4}')
+    
     # Check space in temporary directory
-    local available_space_temp=$(df -k "$(dirname "$temp_path")" | awk 'NR==2 {print $4}')
+    local available_space_temp
+    available_space_temp=$(df -k "$(dirname "$temp_path")" | awk 'NR==2 {print $4}')
     
     if [ -z "$available_space_install" ] || [ -z "$available_space_temp" ]; then
         log_msg "$YELLOW" "[!] Предупреждение: Не удалось проверить доступное пространство"
@@ -51,13 +55,13 @@ check_disk_space() {
     
     if [ "$available_space_install" -lt "$required_space" ]; then
         log_msg "$RED" "[✗] Ошибка: Недостаточно места в $(dirname "$install_path")"
-        log_msg "$RED" "    Доступно: $(($available_space_install / 1024)) МБ, требуется минимум: $(($required_space / 1024)) МБ"
+        log_msg "$RED" "    Доступно: $((available_space_install / 1024)) МБ, требуется минимум: $((required_space / 1024)) МБ"
         return 1
     fi
     
     if [ "$available_space_temp" -lt "$required_space" ]; then
         log_msg "$RED" "[✗] Ошибка: Недостаточно места во временной директории $(dirname "$temp_path")"
-        log_msg "$RED" "    Доступно: $(($available_space_temp / 1024)) МБ, требуется минимум: $(($required_space / 1024)) МБ"
+        log_msg "$RED" "    Доступно: $((available_space_temp / 1024)) МБ, требуется минимум: $((required_space / 1024)) МБ"
         return 1
     fi
     
@@ -119,6 +123,7 @@ rollback() {
 
 # Function to get current sing-box version
 get_current_version() {
+    local current_version
     if command_exists sing-box; then
         current_version=$(sing-box version 2>/dev/null | head -n 1 | awk '{print $3}')
         if [ -z "$current_version" ]; then
@@ -160,21 +165,21 @@ get_latest_version() {
     echo "$latest_version"
 }
 
-# Function to download and install sing-box with detailed logging
+# Function to download and install sing-box with detailed logging using curl
 download_and_install() {
     local version_type="$1"
     local version_url="https://api.github.com/repos/${github_repo}/releases"
     local download_url=""
-
+    
+    # Если выбрали stable, берём ссылку на последний релиз
     case "$version_type" in
         "stable")
             version_url="${version_url}/latest"
             ;;
     esac
-
-    # Get download URL for the required architecture
+    
+    # Получаем ссылку на файл для нашей архитектуры
     download_url=$(curl -s "$version_url" | grep "browser_download_url.*$file" | cut -d '"' -f 4 | head -n 1)
-
     if [ -z "$download_url" ]; then
         log_msg "$RED" "[✗] Ошибка: Не удалось найти ссылку для скачивания для архитектуры $arch"
         exit 1
@@ -182,53 +187,53 @@ download_and_install() {
 
     log_msg "$BLUE" "Ссылка для загрузки: $download_url"
 
-    # Get file size before downloading
-    local file_size=$(curl -sI "$download_url" | grep -i "Content-Length" | awk '{print $2}' | tr -d '\r')
+    # Получаем размер файла
+    local file_size
+    file_size=$(curl -sI "$download_url" | grep -i "Content-Length" | awk '{print $2}' | tr -d '\r')
     if [ -n "$file_size" ]; then
-        local file_size_mb=$(echo "scale=2; $file_size/1048576" | bc 2>/dev/null || echo "$(($file_size / 1048576))")
+        # Пытаемся вычислить размер в МБ
+        local file_size_mb
+        file_size_mb=$(echo "scale=2; $file_size/1048576" | bc 2>/dev/null || echo "$((file_size / 1048576))")
         log_msg "$BLUE" "Размер файла для загрузки: ${file_size_mb} МБ"
     else
         log_msg "$YELLOW" "[!] Предупреждение: Не удалось определить размер файла перед загрузкой"
     fi
 
-    # Download the file with progress indication
-    local filename=$(basename "$download_url")
+    # Загружаем файл
+    local filename
+    filename=$(basename "$download_url")
     log_msg "$BLUE" "Начинается загрузка файла: $filename"
 
-    if command_exists wget; then
-        if ! wget -O "${temp_dir}/${filename}" "$download_url" --progress=bar:force 2>>"$log_file"; then
-            log_msg "$RED" "[✗] Ошибка: не удалось загрузить файл $filename с URL: $download_url"
-            exit 1
-        fi
-    elif command_exists curl; then
+    if command_exists curl; then
         if ! curl -L -o "${temp_dir}/${filename}" "$download_url" --progress-bar 2>>"$log_file"; then
-            log_msg "$RED" "[✗] Ошибка: не удалось загрузить файл $filename с URL: $download_url"
+            log_msg "$RED" "[✗] Ошибка: не удалось загрузить файл $filename"
             exit 1
         fi
     else
-        log_msg "$RED" "[✗] Ошибка: не найдены инструменты для загрузки (wget или curl)"
+        log_msg "$RED" "[✗] Ошибка: curl не установлен"
         exit 1
     fi
-
+    
     log_msg "$GREEN" "[✓] Файл $filename успешно загружен"
 
-    # Verify file integrity
+    # Проверяем целостность (по размеру)
     if [ -f "${temp_dir}/${filename}" ]; then
-        local downloaded_size=$(wc -c < "${temp_dir}/${filename}")
+        local downloaded_size
+        downloaded_size=$(wc -c < "${temp_dir}/${filename}")
         if [ -n "$file_size" ] && [ "$downloaded_size" -ne "$file_size" ]; then
             log_msg "$RED" "[✗] Ошибка: размер загруженного файла не соответствует ожидаемому"
             log_msg "$RED" "    Ожидаемый размер: $file_size байт, фактический: $downloaded_size байт"
             exit 1
         fi
     else
-        log_msg "$RED" "[✗] Ошибка: файл не был загружен с URL: $download_url"
+        log_msg "$RED" "[✗] Ошибка: файл не был загружен"
         exit 1
     fi
-    
-    # Extract and install
+
+    # Распаковка
     log_msg "$BLUE" "Распаковка архива..."
+    local folder_name
     folder_name=$(tar -tzf "${temp_dir}/${filename}" 2>>"$log_file" | head -1 | cut -f1 -d"/")
-    
     if [ -z "$folder_name" ]; then
         log_msg "$RED" "[✗] Ошибка: не удалось определить имя папки в архиве"
         exit 1
@@ -238,14 +243,14 @@ download_and_install() {
         log_msg "$RED" "[✗] Ошибка при распаковке архива"
         exit 1
     fi
-    
-    # Backup existing installation
+
+    # Резервная копия старого исполняемого файла
     if [ -f "${install_dir}/sing-box" ]; then
         log_msg "$BLUE" "Создание резервной копии текущей версии..."
         mv "${install_dir}/sing-box" "$backup_file"
     fi
-    
-    # Install new version
+
+    # Установка новой версии
     log_msg "$BLUE" "Установка новой версии..."
     if [ ! -f "${temp_dir}/${folder_name}/sing-box" ]; then
         log_msg "$RED" "[✗] Ошибка: исполняемый файл sing-box не найден в распакованном архиве"
@@ -254,15 +259,15 @@ download_and_install() {
     
     cp "${temp_dir}/${folder_name}/sing-box" "${install_dir}/"
     chmod +x "${install_dir}/sing-box"
-    
-    # Verify installation
+
+    # Проверяем, что исполняемый файл на месте
     if [ ! -x "${install_dir}/sing-box" ]; then
         log_msg "$RED" "[✗] Ошибка: не удалось установить новую версию sing-box"
         rollback
         exit 1
     fi
-    
-    # Clean up
+
+    # Очистка временных файлов
     log_msg "$BLUE" "Очистка временных файлов..."
     rm -rf "${temp_dir:?}/${folder_name}" "${temp_dir}/${filename}"
     
@@ -292,34 +297,31 @@ restart_services() {
 
 # Function to check available memory
 check_memory() {
-    local required_memory=20000  # Required memory in KB (approximately 20MB)
-    
-    # Get available memory (try different methods)
+    local required_memory=20000  # Required memory in KB (approx 20MB)
     local available_memory=0
-    
+
     if [ -f "/proc/meminfo" ]; then
         available_memory=$(grep -i 'MemAvailable' /proc/meminfo | awk '{print $2}')
-        
-        # If MemAvailable is not found, calculate from MemFree + Buffers + Cached
         if [ -z "$available_memory" ]; then
-            local mem_free=$(grep -i 'MemFree' /proc/meminfo | awk '{print $2}')
-            local buffers=$(grep -i 'Buffers' /proc/meminfo | awk '{print $2}')
-            local cached=$(grep -i 'Cached' /proc/meminfo | awk '{print $2}' | head -1)
-            
+            local mem_free
+            local buffers
+            local cached
+            mem_free=$(grep -i 'MemFree' /proc/meminfo | awk '{print $2}')
+            buffers=$(grep -i 'Buffers' /proc/meminfo | awk '{print $2}')
+            cached=$(grep -i 'Cached' /proc/meminfo | awk '{print $2}' | head -1)
             if [ -n "$mem_free" ] && [ -n "$buffers" ] && [ -n "$cached" ]; then
                 available_memory=$((mem_free + buffers + cached))
             fi
         fi
     fi
     
-    # If still no valid value, try free command
+    # Если не получилось узнать через /proc/meminfo, пробуем через free
     if [ -z "$available_memory" ] || [ "$available_memory" -eq 0 ]; then
         if command_exists free; then
             available_memory=$(free | grep -i 'Mem:' | awk '{print $7}')
         fi
     fi
     
-    # If we still can't determine memory, warn but continue
     if [ -z "$available_memory" ] || [ "$available_memory" -eq 0 ]; then
         log_msg "$YELLOW" "[!] Предупреждение: Не удалось проверить доступную память"
         return 0
@@ -327,7 +329,7 @@ check_memory() {
     
     if [ "$available_memory" -lt "$required_memory" ]; then
         log_msg "$RED" "[✗] Ошибка: Недостаточно оперативной памяти для обновления"
-        log_msg "$RED" "    Доступно: $(($available_memory / 1024)) МБ, требуется минимум: $(($required_memory / 1024)) МБ"
+        log_msg "$RED" "    Доступно: $((available_memory / 1024)) МБ, требуется минимум: $((required_memory / 1024)) МБ"
         return 1
     fi
     
@@ -339,16 +341,16 @@ check_memory() {
 main() {
     create_dirs
     
-    # Handle rollback argument
+    # Если параметр rollback, делаем откат
     if [ "$1" = "rollback" ]; then
         rollback
         exit 0
     fi
     
-    # Detect architecture
+    # Определяем архитектуру
     detect_architecture
     
-    # Check for available disk space and memory
+    # Проверяем доступное место и память
     if ! check_disk_space; then
         log_msg "$RED" "[✗] Обновление отменено из-за нехватки дискового пространства"
         exit 1
@@ -359,13 +361,15 @@ main() {
         exit 1
     fi
     
-    # Menu for version selection
-    echo "Выберите тип версии:"
-    echo "1. Релизная (stable)"
-    echo "2. Альфа (alpha)"
-    echo "3. Бета (beta)"
-    read -p "Введите ваш выбор (1, 2, 3): " choice < /dev/tty
+    # Меню выбора типа версии
+    printf "Выберите тип версии:\n"
+    printf "1. Релизная (stable)\n"
+    printf "2. Альфа (alpha)\n"
+    printf "3. Бета (beta)\n"
+    printf "Введите ваш выбор (1, 2, 3): "
+    read choice < /dev/tty
     
+    local version_type
     case "$choice" in
         1)
             version_type="stable"
@@ -385,11 +389,13 @@ main() {
             ;;
     esac
     
-    # Get current and latest versions
+    # Текущая и последняя версия
+    local current_version
     current_version=$(get_current_version)
+    local latest_version
     latest_version=$(get_latest_version "$version_type")
     
-    # Check if update is needed
+    # Проверяем, нужна ли установка
     if [ "$current_version" = "$latest_version" ]; then
         log_msg "$GREEN" "[✓] Уже установлена последняя версия: $current_version"
         exit 0
@@ -397,10 +403,10 @@ main() {
     
     log_msg "$BLUE" "Обновляем с версии $current_version до $latest_version"
     
-    # Download and install
+    # Скачивание и установка
     download_and_install "$version_type"
     
-    # Restart services
+    # Перезапуск сервисов
     if ! restart_services; then
         log_msg "$RED" "[✗] Ошибка при обновлении. Выполняется откат..."
         rollback
@@ -411,5 +417,5 @@ main() {
     exit 0
 }
 
-# Run the main function
+# Запускаем основную функцию
 main "$@"
