@@ -188,15 +188,14 @@ download_and_install() {
     log_msg "$BLUE" "Ссылка для загрузки: $download_url"
 
     # Получаем размер файла
-    local file_size
     file_size=$(curl -sI "$download_url" | grep -i "Content-Length" | awk '{print $2}' | tr -d '\r')
-    if [ -n "$file_size" ]; then
-        # Пытаемся вычислить размер в МБ
-        local file_size_mb
+    if [ -n "$file_size" ] && [ "$file_size" -gt 0 ] 2>/dev/null; then
+        # Если получили валидный размер, выводим
         file_size_mb=$(echo "scale=2; $file_size/1048576" | bc 2>/dev/null || echo "$((file_size / 1048576))")
         log_msg "$BLUE" "Размер файла для загрузки: ${file_size_mb} МБ"
     else
-        log_msg "$YELLOW" "[!] Предупреждение: Не удалось определить размер файла перед загрузкой"
+        # Иначе пропускаем вывод о размере
+        file_size=""
     fi
 
     # Загружаем файл
@@ -279,20 +278,24 @@ download_and_install() {
 restart_services() {
     log_msg "$BLUE" "Перезапуск сервисов..."
     
+    # Сначала перезапускаем сеть
+    if ! service network restart 2>>"$log_file"; then
+        log_msg "$YELLOW" "[!] Предупреждение: Ошибка при перезапуске сети"
+        log_msg "$YELLOW" "[!] Рекомендуется перезапустить сеть вручную"
+    else
+        log_msg "$GREEN" "[✓] Сеть успешно перезапущена"
+    fi
+    
+    # Небольшая пауза, чтобы сеть успела подняться
+    sleep 2
+    
+    # Затем перезапускаем sing-box
     if ! service sing-box restart 2>>"$log_file"; then
         log_msg "$RED" "[✗] Ошибка при перезапуске сервиса sing-box"
         return 1
     fi
     
     log_msg "$GREEN" "[✓] Сервис sing-box успешно перезапущен"
-    
-    if ! service network restart 2>>"$log_file"; then
-        log_msg "$YELLOW" "[!] Предупреждение: Ошибка при перезапуске сети"
-        log_msg "$YELLOW" "[!] Рекомендуется перезапустить сеть вручную"
-        return 0
-    fi
-    
-    log_msg "$GREEN" "[✓] Сеть успешно перезапущена"
     return 0
 }
 
