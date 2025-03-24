@@ -45,11 +45,6 @@ check_requirements() {
         missing_tools="$missing_tools wget"
     fi
     
-    # Check for jq
-    if ! which jq >/dev/null 2>&1; then
-        missing_tools="$missing_tools jq"
-    fi
-    
     # Install missing utilities
     if [ -n "$missing_tools" ]; then
         print_msg "$YELLOW" "– Отсутствуют необходимые утилиты:$missing_tools"
@@ -98,7 +93,7 @@ backup_config() {
 # Function to download and modify JSON file
 download_and_modify_config() {
     local sub_url="$1"
-    local download_url="${sub_url}/sing-box"
+    local download_url="$sub_url"
     local tmp_file="$TMP_DIR/subscription_$(date '+%s').json"
     
     print_msg "$BLUE" "– Загружаем JSON из: ${download_url} ..."
@@ -111,40 +106,14 @@ download_and_modify_config() {
         return 1
     fi
     
-    # Check if the downloaded file is valid JSON
-    if ! jq . "$tmp_file" >/dev/null 2>&1; then
+    # Basic JSON validation - check if file contains valid JSON structure
+    if ! grep -q '{' "$tmp_file" || ! grep -q '}' "$tmp_file"; then
         print_msg "$RED" "Ошибка: загруженный файл не является валидным JSON!"
         rm -f "$tmp_file"
         return 1
     fi
     
     print_msg "$BLUE" "– Конфигурация успешно загружена"
-    
-    # Modify the main JSON using sed (more compatible with OpenWRT)
-    # 1. Replace "stack": "mixed" with "stack": "system"
-    sed -i 's/"stack": "mixed"/"stack": "system"/' "$tmp_file"
-    if [ $? -eq 0 ]; then
-        print_msg "$BLUE" "– Значение stack изменено на system"
-    else
-        print_msg "$RED" "Ошибка при изменении stack!"
-    fi
-    
-    # 2. Insert "auto_redirect": true, after "auto_route": true,
-    sed -i '/"auto_route": true,/a\    "auto_redirect": true,' "$tmp_file"
-    if [ $? -eq 0 ]; then
-        print_msg "$BLUE" "– Параметр auto_redirect добавлен"
-    else
-        print_msg "$RED" "Ошибка при добавлении auto_redirect!"
-    fi
-    
-    # 3. Add experimental block before the last closing bracket
-    sed -i '$ s/}/,\n  "experimental": {\n    "clash_api": {\n      "external_ui": "zashboard",\n      "external_controller": "0.0.0.0:9090",\n      "external_ui_download_url": "https:\/\/github.com\/Zephyruso\/zashboard\/archive\/gh-pages.zip",\n      "external_ui_download_detour": "↔️ Direct"\n    },\n    "cache_file": {\n      "enabled": true,\n      "store_rdrc": true\n    }\n  }\n}/' "$tmp_file"
-    
-    if [ $? -eq 0 ]; then
-        print_msg "$BLUE" "– Блок experimental добавлен"
-    else
-        print_msg "$RED" "Ошибка при добавлении блока experimental!"
-    fi
     
     # Create configuration directory if it doesn't exist
     if [ ! -d "$CONFIG_DIR" ]; then
@@ -163,21 +132,8 @@ download_and_modify_config() {
     fi
 }
 
-# Function to validate and format the configuration
+# Function to validate the configuration
 validate_and_format_config() {
-    # Format JSON
-    if [ -x "$(which jq)" ]; then
-        jq . "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
-        if [ $? -eq 0 ]; then
-            print_msg "$BLUE" "– Конфигурация отформатирована"
-        else
-            print_msg "$RED" "Ошибка при форматировании конфигурации!"
-            return 1
-        fi
-    else
-        print_msg "$YELLOW" "– jq не найден, форматирование пропущено"
-    fi
-    
     # Check configuration using sing-box check (if available)
     if which sing-box >/dev/null 2>&1; then
         sing-box check -c "$CONFIG_FILE" >/dev/null 2>&1
@@ -190,34 +146,6 @@ validate_and_format_config() {
         fi
     else
         print_msg "$YELLOW" "– sing-box не найден, проверка конфигурации пропущена"
-        return 0
-    fi
-}
-
-# Function to set up daily update
-setup_cron_job() {
-    local choice="$1"
-    local script_url="https://raw.githubusercontent.com/dexedrine-01/PurrNet/main/update_config.sh"
-    
-    if [ "$choice" = "y" ] || [ "$choice" = "Y" ]; then
-        # Remove existing tasks for updating the script (if any)
-        sed -i "/wget.*$script_url/d" /etc/crontabs/root 2>/dev/null
-        
-        # Add new task
-        echo "0 0 * * * wget -qO- $script_url | sh" >> /etc/crontabs/root
-        
-        # Restart cron service in OpenWRT
-        /etc/init.d/cron restart >/dev/null 2>&1
-        
-        if [ $? -eq 0 ]; then
-            print_msg "$BLUE" "– Ежедневное обновление настроено на полночь."
-            return 0
-        else
-            print_msg "$RED" "Ошибка при настройке ежедневного обновления!"
-            return 1
-        fi
-    else
-        print_msg "$BLUE" "– Ежедневное обновление не настроено."
         return 0
     fi
 }
@@ -252,52 +180,8 @@ reload_service() {
     fi
 }
 
-# Function to parse command line arguments
-parse_args() {
-    # Initialize variables
-    SUB_URL=""
-    CRON_CHOICE="n"
-    NON_INTERACTIVE=0
-    
-    # Check first argument as URL (for backward compatibility)
-    if [ $# -gt 0 ] && [ "${1#http}" != "$1" ]; then
-        SUB_URL="$1"
-        shift
-    fi
-    
-    # Process remaining parameters
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            -c|--cron)
-                CRON_CHOICE="y"
-                shift
-                ;;
-            -n|--non-interactive)
-                NON_INTERACTIVE=1
-                shift
-                ;;
-            -h|--help)
-                echo "Использование: $0 [URL] [опции]"
-                echo "Опции:"
-                echo "  URL                  Указать URL подписки напрямую"
-                echo "  -c, --cron           Настроить ежедневное обновление"
-                echo "  -n, --non-interactive Запуск без интерактивного режима"
-                echo "  -h, --help           Показать эту справку"
-                exit 0
-                ;;
-            *)
-                echo "Неизвестный параметр: $1"
-                exit 1
-                ;;
-        esac
-    done
-}
-
 # Main function
 main() {
-    # Process command line arguments
-    parse_args "$@"
-    
     # Check requirements
     check_requirements
     if [ $? -ne 0 ]; then
@@ -305,11 +189,9 @@ main() {
         exit 1
     fi
     
-    # Request subscription URL if not specified in parameters
-    if [ -z "$SUB_URL" ] && [ $NON_INTERACTIVE -eq 0 ]; then
-        printf "Вставьте ссылку на вашу подписку: " >&2
-        read SUB_URL < /dev/tty
-    fi
+    # Request subscription URL
+    printf "Вставьте ссылку на вашу подписку: " >&2
+    read SUB_URL < /dev/tty
     
     if [ -z "$SUB_URL" ]; then
         print_msg "$RED" "Ошибка: ссылка не введена!"
@@ -337,19 +219,11 @@ main() {
     
     # Display final message
     print_msg "$GREEN" "Обновление профиля завершено успешно!"
-    printf "Панель для управления VPN: http://%s:9090\n" "$ROUTER_IP"
-    
-    # Ask about daily update if not specified in parameters
-    if [ $NON_INTERACTIVE -eq 0 ]; then
-        printf "${BLUE}– Запускать ли обновление раз в сутки в полночь? (Если конфигурация изменена вручную под личные нужды, то изменения не сохранятся) [y/N]: ${RESET}"
-        read CRON_CHOICE < /dev/tty
-    fi
-    
-    # Set up daily update
-    setup_cron_job "$CRON_CHOICE"
+    printf "Для доступа к панели управления откройте в браузере: http://%s:9090\n" "$ROUTER_IP"
+    printf "На стартовом экране введите %s в поле адреса и нажмите Submit\n" "$ROUTER_IP"
     
     exit 0
 }
 
-# Run main function with all command line arguments
-main "$@"
+# Run main function
+main
