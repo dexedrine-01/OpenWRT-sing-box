@@ -165,11 +165,34 @@ get_latest_version() {
     echo "$latest_version"
 }
 
+# Function to remove old sing-box version
+remove_old_version() {
+    log_msg "$BLUE" "Удаление старой версии sing-box..."
+    
+    # Останавливаем сервис перед удалением
+    if service sing-box stop 2>>"$log_file"; then
+        log_msg "$GREEN" "[✓] Сервис sing-box остановлен"
+    else
+        log_msg "$YELLOW" "[!] Предупреждение: Не удалось остановить сервис sing-box"
+    fi
+    
+    # Удаляем старый исполняемый файл
+    if [ -f "${install_dir}/sing-box" ]; then
+        rm -f "${install_dir}/sing-box"
+        log_msg "$GREEN" "[✓] Старая версия sing-box удалена"
+    else
+        log_msg "$YELLOW" "[!] Предупреждение: Старая версия sing-box не найдена"
+    fi
+}
+
 # Function to download and install sing-box with detailed logging using curl
 download_and_install() {
     local version_type="$1"
     local version_url="https://api.github.com/repos/${github_repo}/releases"
     local download_url=""
+    
+    # Удаляем старую версию перед установкой новой
+    remove_old_version
     
     # Если выбрали stable, берём ссылку на последний релиз
     case "$version_type" in
