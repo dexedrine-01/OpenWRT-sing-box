@@ -25,7 +25,7 @@ sh <(wget -O - https://raw.githubusercontent.com/itdoginfo/domain-routing-openwr
 - Пользователю предоставляется возможность выбрать версию (альфа, бета, релиз)
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/dexedrine-01/PurrNet/main/update_sing-box.sh | sh
+wget -qO- https://raw.githubusercontent.com/dexedrine-01/OpenWRT-sing-box/main/update_sing-box.sh | sh
 ```
 **Рекомендуется выбирать стабильную релизную версию!**
 
@@ -36,5 +36,5 @@ wget -qO- https://raw.githubusercontent.com/dexedrine-01/PurrNet/main/update_sin
 - Выполняется загрузка JSON-конфигурации по ссылке от пользователя
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/dexedrine-01/PurrNet/main/update_config.sh | sh
+wget -qO- https://raw.githubusercontent.com/dexedrine-01/OpenWRT-sing-box/main/update_config.sh | sh
 ```
