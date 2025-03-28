@@ -117,6 +117,7 @@ rollback() {
         fi
     else
         log_msg "$RED" "[✗] Предыдущая версия не найдена!"
+        log_msg "$RED" "[✗] Требуется ручная установка sing-box"
         exit 1
     fi
 }
@@ -267,12 +268,6 @@ download_and_install() {
         exit 1
     fi
 
-    # Резервная копия старого исполняемого файла
-    if [ -f "${install_dir}/sing-box" ]; then
-        log_msg "$BLUE" "Создание резервной копии текущей версии..."
-        mv "${install_dir}/sing-box" "$backup_file"
-    fi
-
     # Установка новой версии
     log_msg "$BLUE" "Установка новой версии..."
     if [ ! -f "${temp_dir}/${folder_name}/sing-box" ]; then
@@ -286,7 +281,7 @@ download_and_install() {
     # Проверяем, что исполняемый файл на месте
     if [ ! -x "${install_dir}/sing-box" ]; then
         log_msg "$RED" "[✗] Ошибка: не удалось установить новую версию sing-box"
-        rollback
+        log_msg "$RED" "[✗] Требуется ручная установка sing-box"
         exit 1
     fi
 
@@ -377,17 +372,6 @@ main() {
     # Определяем архитектуру
     detect_architecture
     
-    # Проверяем доступное место и память
-    if ! check_disk_space; then
-        log_msg "$RED" "[✗] Обновление отменено из-за нехватки дискового пространства"
-        exit 1
-    fi
-    
-    if ! check_memory; then
-        log_msg "$RED" "[✗] Обновление отменено из-за нехватки памяти"
-        exit 1
-    fi
-    
     # Меню выбора типа версии
     printf "Выберите тип версии:\n"
     printf "1. Релизная (stable)\n"
@@ -429,6 +413,33 @@ main() {
     fi
     
     log_msg "$BLUE" "Обновляем с версии $current_version до $latest_version"
+    
+    # Останавливаем сервис перед удалением
+    if service sing-box stop 2>>"$log_file"; then
+        log_msg "$GREEN" "[✓] Сервис sing-box остановлен"
+    else
+        log_msg "$YELLOW" "[!] Предупреждение: Не удалось остановить сервис sing-box"
+    fi
+    
+    # Удаляем старую версию
+    if [ -f "${install_dir}/sing-box" ]; then
+        rm -f "${install_dir}/sing-box"
+        log_msg "$GREEN" "[✓] Старая версия sing-box удалена"
+    else
+        log_msg "$YELLOW" "[!] Предупреждение: Старая версия sing-box не найдена"
+    fi
+    
+    # Проверяем доступное место
+    if ! check_disk_space; then
+        log_msg "$RED" "[✗] Обновление отменено из-за нехватки дискового пространства"
+        exit 1
+    fi
+    
+    # Проверяем память
+    if ! check_memory; then
+        log_msg "$RED" "[✗] Обновление отменено из-за нехватки памяти"
+        exit 1
+    fi
     
     # Скачивание и установка
     download_and_install "$version_type"
