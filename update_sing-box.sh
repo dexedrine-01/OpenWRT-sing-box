@@ -192,9 +192,6 @@ download_and_install() {
     local version_url="https://api.github.com/repos/${github_repo}/releases"
     local download_url=""
     
-    # Удаляем старую версию перед установкой новой
-    remove_old_version
-    
     # Если выбрали stable, берём ссылку на последний релиз
     case "$version_type" in
         "stable")
