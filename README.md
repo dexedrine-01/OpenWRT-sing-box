@@ -2,8 +2,8 @@
 
 #### 📥 Установка sing-box
 
-- Выполняется загрузка необходимых пакетов
-- Выполняется автоматическая настройка firewall
+- Загрузка необходимых пакетов
+- Автоматическая настройка зон фаерволла
 
 ```bash
 sh <(wget -O - https://raw.githubusercontent.com/itdoginfo/domain-routing-openwrt/master/getdomains-install.sh)
@@ -25,6 +25,8 @@ sh <(wget -O - https://raw.githubusercontent.com/itdoginfo/domain-routing-openwr
 wget -qO- https://raw.githubusercontent.com/dexedrine-01/OpenWRT-sing-box/main/update_sing-box.sh | sh
 ```
 **Рекомендуется выбирать стабильную релизную версию!**
+
+------------
 
 #### 📦 Обновление версии sing-box на сервере
 
