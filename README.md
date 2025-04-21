@@ -43,3 +43,11 @@ wget -qO- https://raw.githubusercontent.com/dexedrine-01/OpenWRT-sing-box/main/u
 ```bash
 wget -qO- https://raw.githubusercontent.com/dexedrine-01/OpenWRT-sing-box/main/update_config.sh | sh
 ```
+
+------------
+
+#### 🔄 Обновление панели Zashboard
+
+```bash
+wget -qO- https://raw.githubusercontent.com/dexedrine-01/OpenWRT-sing-box/main/update_zashboard.sh | sh
+```
