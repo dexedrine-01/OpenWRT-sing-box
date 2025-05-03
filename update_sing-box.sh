@@ -331,13 +331,12 @@ download_and_install() {
             exit 1
         fi
         log_msg "$GREEN" "[✓] Файл $ipk_filename успешно загружен"
-        if opkg install --force-reinstall "${temp_dir}/${ipk_filename}" 2>>"$log_file"; then
-            log_msg "$GREEN" "[✓] sing-box успешно установлен через opkg"
+        if [ -f "${temp_dir}/${ipk_filename}" ]; then
+            opkg install --force-reinstall "${temp_dir}/${ipk_filename}" 2>>"$log_file"
         else
-            log_msg "$RED" "[✗] Ошибка при установке .ipk через opkg"
+            log_msg "$RED" "[✗] Ошибка: .ipk файл не найден по пути ${temp_dir}/${ipk_filename}"
             exit 1
         fi
-        rm -f "${temp_dir}/${ipk_filename}"
         return 0
     fi
 
