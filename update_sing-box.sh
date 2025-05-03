@@ -208,77 +208,115 @@ get_openwrt_ipk_filename() {
     local arch_list
     arch_list=$(opkg print-architecture | awk '{print $2}')
     local latest="${latest_version}"
+    local found=""
 
     case "$arch" in
         "aarch64")
             for candidate in aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic; do
                 if echo "$arch_list" | grep -q "^$candidate$"; then
-                    echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                    return
+                    # Проверяем наличие файла в релизе
+                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
+                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                        return
+                    else
+                        found=1
+                    fi
                 fi
             done
             ;;
         "x86_64")
             for candidate in x86_64; do
                 if echo "$arch_list" | grep -q "^$candidate$"; then
-                    echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                    return
+                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
+                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                        return
+                    else
+                        found=1
+                    fi
                 fi
             done
             ;;
         "i386"|"i686")
             for candidate in i386_pentium-mmx i386_pentium4; do
                 if echo "$arch_list" | grep -q "^$candidate$"; then
-                    echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                    return
+                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
+                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                        return
+                    else
+                        found=1
+                    fi
                 fi
             done
             ;;
         "armv7l"|"armv6l"|"arm")
             for candidate in arm_arm1176jzf-s_vfp arm_arm926ej-s arm_cortex-a15_neon-vfpv4 arm_cortex-a5_vfpv4 arm_cortex-a7_neon-vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a7 arm_cortex-a8_vfpv3 arm_cortex-a9_neon arm_cortex-a9_vfpv3-d16 arm_cortex-a9 arm_fa526 arm_xscale; do
                 if echo "$arch_list" | grep -q "^$candidate$"; then
-                    echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                    return
+                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
+                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                        return
+                    else
+                        found=1
+                    fi
                 fi
             done
             ;;
         "mips")
             for candidate in mipsel_24kc_24kf mipsel_24kc mipsel_74kc mipsel_mips32 mips_4kec mips_24kc; do
                 if echo "$arch_list" | grep -q "^$candidate$"; then
-                    echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                    return
+                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
+                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                        return
+                    else
+                        found=1
+                    fi
                 fi
             done
             ;;
         "mips64")
             for candidate in mips64_mips64r2 mips64_octeonplus; do
                 if echo "$arch_list" | grep -q "^$candidate$"; then
-                    echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                    return
+                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
+                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                        return
+                    else
+                        found=1
+                    fi
                 fi
             done
             ;;
         "mips64el")
             for candidate in mips64el_mips64r2; do
                 if echo "$arch_list" | grep -q "^$candidate$"; then
-                    echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                    return
+                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
+                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                        return
+                    else
+                        found=1
+                    fi
                 fi
             done
             ;;
         "loongarch64")
             for candidate in loongarch64_generic; do
                 if echo "$arch_list" | grep -q "^$candidate$"; then
-                    echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                    return
+                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
+                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                        return
+                    else
+                        found=1
+                    fi
                 fi
             done
             ;;
         "riscv64")
             for candidate in riscv64_generic; do
                 if echo "$arch_list" | grep -q "^$candidate$"; then
-                    echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                    return
+                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
+                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                        return
+                    else
+                        found=1
+                    fi
                 fi
             done
             ;;
@@ -287,7 +325,7 @@ get_openwrt_ipk_filename() {
             exit 1
             ;;
     esac
-    log_msg "$RED" "[✗] Ошибка: Не удалось подобрать .ipk для поддерживаемых архитектур ($arch_list)"
+    log_msg "$RED" "[✗] Для вашей архитектуры не найден подходящий .ipk-файл в релизе, обновление невозможно."
     exit 1
 }
 
@@ -312,7 +350,31 @@ download_and_install() {
         fi
         log_msg "$GREEN" "[✓] Файл $ipk_filename успешно загружен"
         if [ -f "${temp_dir}/${ipk_filename}" ]; then
-            opkg install --force-reinstall "${temp_dir}/${ipk_filename}" 2>>"$log_file"
+            # Локальная установка с перехватом статусов opkg
+            opkg_output=$(opkg install --force-reinstall "${temp_dir}/${ipk_filename}" 2>&1)
+            # Переводим статусы на русский и выводим с префиксом
+            echo "$opkg_output" | while IFS= read -r line; do
+                case "$line" in
+                    "Package * has no valid architecture, ignoring.")
+                        log_msg "$YELLOW" "[!] Пакет не поддерживает архитектуру, пропускаем."
+                        ;;
+                    "No packages removed.")
+                        log_msg "$YELLOW" "[!] Пакеты не были удалены."
+                        ;;
+                    "Installing sing-box (*) to root..."*)
+                        log_msg "$BLUE" "[→] Установка sing-box ($ipk_filename) в систему..."
+                        ;;
+                    "Configuring sing-box.")
+                        log_msg "$BLUE" "[→] Конфигурирование sing-box."
+                        ;;
+                    *)
+                        # Для всего остального выводим как есть, но с префиксом
+                        if [ -n "$line" ]; then
+                            log_msg "$BLUE" "[i] $line"
+                        fi
+                        ;;
+                esac
+            done
         else
             log_msg "$RED" "[✗] Ошибка: .ipk файл не найден по пути ${temp_dir}/${ipk_filename}"
             exit 1
