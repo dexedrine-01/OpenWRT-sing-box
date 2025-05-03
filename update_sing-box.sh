@@ -205,110 +205,90 @@ get_openwrt_ipk_filename() {
     local arch=$(uname -m)
     local cpuinfo
     cpuinfo=$(cat /proc/cpuinfo 2>/dev/null)
+    local arch_list
+    arch_list=$(opkg print-architecture | awk '{print $2}')
+    local latest="${latest_version}"
 
     case "$arch" in
+        "aarch64")
+            for candidate in aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic; do
+                if echo "$arch_list" | grep -q "^$candidate$"; then
+                    echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                    return
+                fi
+            done
+            ;;
         "x86_64")
-            echo "sing-box_${latest_version}_openwrt_x86_64.ipk"
+            for candidate in x86_64; do
+                if echo "$arch_list" | grep -q "^$candidate$"; then
+                    echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                    return
+                fi
+            done
             ;;
         "i386"|"i686")
-            if echo "$cpuinfo" | grep -qi "pentium.*mmx"; then
-                echo "sing-box_${latest_version}_openwrt_i386_pentium-mmx.ipk"
-            elif echo "$cpuinfo" | grep -qi "pentium 4"; then
-                echo "sing-box_${latest_version}_openwrt_i386_pentium4.ipk"
-            else
-                echo "sing-box_${latest_version}_openwrt_i386_pentium4.ipk"
-            fi
-            ;;
-        "aarch64")
-            if echo "$cpuinfo" | grep -qi "cortex-a53"; then
-                echo "sing-box_${latest_version}_openwrt_aarch64_cortex-a53.ipk"
-            elif echo "$cpuinfo" | grep -qi "cortex-a72"; then
-                echo "sing-box_${latest_version}_openwrt_aarch64_cortex-a72.ipk"
-            elif echo "$cpuinfo" | grep -qi "cortex-a76"; then
-                echo "sing-box_${latest_version}_openwrt_aarch64_cortex-a76.ipk"
-            else
-                echo "sing-box_${latest_version}_openwrt_aarch64_generic.ipk"
-            fi
+            for candidate in i386_pentium-mmx i386_pentium4; do
+                if echo "$arch_list" | grep -q "^$candidate$"; then
+                    echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                    return
+                fi
+            done
             ;;
         "armv7l"|"armv6l"|"arm")
-            if echo "$cpuinfo" | grep -qi "arm1176jzf-s"; then
-                echo "sing-box_${latest_version}_openwrt_arm_arm1176jzf-s_vfp.ipk"
-            elif echo "$cpuinfo" | grep -qi "arm926ej-s"; then
-                echo "sing-box_${latest_version}_openwrt_arm_arm926ej-s.ipk"
-            elif echo "$cpuinfo" | grep -qi "cortex-a15"; then
-                echo "sing-box_${latest_version}_openwrt_arm_cortex-a15_neon-vfpv4.ipk"
-            elif echo "$cpuinfo" | grep -qi "cortex-a5"; then
-                echo "sing-box_${latest_version}_openwrt_arm_cortex-a5_vfpv4.ipk"
-            elif echo "$cpuinfo" | grep -qi "cortex-a7"; then
-                if echo "$cpuinfo" | grep -qi "neon"; then
-                    echo "sing-box_${latest_version}_openwrt_arm_cortex-a7_neon-vfpv4.ipk"
-                elif echo "$cpuinfo" | grep -qi "vfpv4"; then
-                    echo "sing-box_${latest_version}_openwrt_arm_cortex-a7_vfpv4.ipk"
-                else
-                    echo "sing-box_${latest_version}_openwrt_arm_cortex-a7.ipk"
+            for candidate in arm_arm1176jzf-s_vfp arm_arm926ej-s arm_cortex-a15_neon-vfpv4 arm_cortex-a5_vfpv4 arm_cortex-a7_neon-vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a7 arm_cortex-a8_vfpv3 arm_cortex-a9_neon arm_cortex-a9_vfpv3-d16 arm_cortex-a9 arm_fa526 arm_xscale; do
+                if echo "$arch_list" | grep -q "^$candidate$"; then
+                    echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                    return
                 fi
-            elif echo "$cpuinfo" | grep -qi "cortex-a8"; then
-                echo "sing-box_${latest_version}_openwrt_arm_cortex-a8_vfpv3.ipk"
-            elif echo "$cpuinfo" | grep -qi "cortex-a9"; then
-                if echo "$cpuinfo" | grep -qi "neon"; then
-                    echo "sing-box_${latest_version}_openwrt_arm_cortex-a9_neon.ipk"
-                elif echo "$cpuinfo" | grep -qi "vfpv3-d16"; then
-                    echo "sing-box_${latest_version}_openwrt_arm_cortex-a9_vfpv3-d16.ipk"
-                else
-                    echo "sing-box_${latest_version}_openwrt_arm_cortex-a9.ipk"
-                fi
-            elif echo "$cpuinfo" | grep -qi "fa526"; then
-                echo "sing-box_${latest_version}_openwrt_arm_fa526.ipk"
-            elif echo "$cpuinfo" | grep -qi "xscale"; then
-                echo "sing-box_${latest_version}_openwrt_arm_xscale.ipk"
-            else
-                echo "sing-box_${latest_version}_openwrt_arm_cortex-a7.ipk"
-            fi
+            done
             ;;
         "mips")
-            if echo "$cpuinfo" | grep -qi "24kc"; then
-                if echo "$cpuinfo" | grep -qi "24kf"; then
-                    echo "sing-box_${latest_version}_openwrt_mipsel_24kc_24kf.ipk"
-                else
-                    echo "sing-box_${latest_version}_openwrt_mipsel_24kc.ipk"
+            for candidate in mipsel_24kc_24kf mipsel_24kc mipsel_74kc mipsel_mips32 mips_4kec mips_24kc; do
+                if echo "$arch_list" | grep -q "^$candidate$"; then
+                    echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                    return
                 fi
-            elif echo "$cpuinfo" | grep -qi "74kc"; then
-                echo "sing-box_${latest_version}_openwrt_mipsel_74kc.ipk"
-            elif echo "$cpuinfo" | grep -qi "mips32"; then
-                echo "sing-box_${latest_version}_openwrt_mipsel_mips32.ipk"
-            elif echo "$cpuinfo" | grep -qi "4kec"; then
-                echo "sing-box_${latest_version}_openwrt_mips_4kec.ipk"
-            elif echo "$cpuinfo" | grep -qi "mips64r2"; then
-                echo "sing-box_${latest_version}_openwrt_mips64_mips64r2.ipk"
-            elif echo "$cpuinfo" | grep -qi "octeonplus"; then
-                echo "sing-box_${latest_version}_openwrt_mips64_octeonplus.ipk"
-            else
-                echo "sing-box_${latest_version}_openwrt_mips_24kc.ipk"
-            fi
+            done
             ;;
         "mips64")
-            if echo "$cpuinfo" | grep -qi "mips64r2"; then
-                echo "sing-box_${latest_version}_openwrt_mips64_mips64r2.ipk"
-            elif echo "$cpuinfo" | grep -qi "octeonplus"; then
-                echo "sing-box_${latest_version}_openwrt_mips64_octeonplus.ipk"
-            else
-                echo "sing-box_${latest_version}_openwrt_mips64_mips64r2.ipk"
-            fi
+            for candidate in mips64_mips64r2 mips64_octeonplus; do
+                if echo "$arch_list" | grep -q "^$candidate$"; then
+                    echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                    return
+                fi
+            done
             ;;
         "mips64el")
-            echo "sing-box_${latest_version}_openwrt_mips64el_mips64r2.ipk"
+            for candidate in mips64el_mips64r2; do
+                if echo "$arch_list" | grep -q "^$candidate$"; then
+                    echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                    return
+                fi
+            done
             ;;
         "loongarch64")
-            echo "sing-box_${latest_version}_openwrt_loongarch64_generic.ipk"
+            for candidate in loongarch64_generic; do
+                if echo "$arch_list" | grep -q "^$candidate$"; then
+                    echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                    return
+                fi
+            done
             ;;
         "riscv64")
-            echo "sing-box_${latest_version}_openwrt_riscv64_generic.ipk"
+            for candidate in riscv64_generic; do
+                if echo "$arch_list" | grep -q "^$candidate$"; then
+                    echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                    return
+                fi
+            done
             ;;
         *)
             log_msg "$RED" "[✗] Ошибка: Архитектура $arch не поддерживается для OpenWRT"
             exit 1
             ;;
     esac
+    log_msg "$RED" "[✗] Ошибка: Не удалось подобрать .ipk для поддерживаемых архитектур ($arch_list)"
+    exit 1
 }
 
 # Function to download and install sing-box with detailed logging using curl
