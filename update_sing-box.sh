@@ -186,12 +186,161 @@ remove_old_version() {
     fi
 }
 
+# Function to check if the system is OpenWRT 24+
+is_openwrt_24plus() {
+    if [ -f /etc/openwrt_release ]; then
+        . /etc/openwrt_release
+        if [ -n "$DISTRIB_RELEASE" ]; then
+            major=$(echo "$DISTRIB_RELEASE" | cut -d. -f1)
+            if [ "$major" -ge 24 ]; then
+                return 0
+            fi
+        fi
+    fi
+    return 1
+}
+
+# Function to get the name of the .ipk file for OpenWRT 24.10 based on architecture and CPU
+get_openwrt_ipk_filename() {
+    local arch=$(uname -m)
+    local cpuinfo
+    cpuinfo=$(cat /proc/cpuinfo 2>/dev/null)
+
+    case "$arch" in
+        "x86_64")
+            echo "sing-box_${latest_version}_openwrt_x86_64.ipk"
+            ;;
+        "i386"|"i686")
+            if echo "$cpuinfo" | grep -qi "pentium.*mmx"; then
+                echo "sing-box_${latest_version}_openwrt_i386_pentium-mmx.ipk"
+            elif echo "$cpuinfo" | grep -qi "pentium 4"; then
+                echo "sing-box_${latest_version}_openwrt_i386_pentium4.ipk"
+            else
+                echo "sing-box_${latest_version}_openwrt_i386_pentium4.ipk"
+            fi
+            ;;
+        "aarch64")
+            if echo "$cpuinfo" | grep -qi "cortex-a53"; then
+                echo "sing-box_${latest_version}_openwrt_aarch64_cortex-a53.ipk"
+            elif echo "$cpuinfo" | grep -qi "cortex-a72"; then
+                echo "sing-box_${latest_version}_openwrt_aarch64_cortex-a72.ipk"
+            elif echo "$cpuinfo" | grep -qi "cortex-a76"; then
+                echo "sing-box_${latest_version}_openwrt_aarch64_cortex-a76.ipk"
+            else
+                echo "sing-box_${latest_version}_openwrt_aarch64_generic.ipk"
+            fi
+            ;;
+        "armv7l"|"armv6l"|"arm")
+            if echo "$cpuinfo" | grep -qi "arm1176jzf-s"; then
+                echo "sing-box_${latest_version}_openwrt_arm_arm1176jzf-s_vfp.ipk"
+            elif echo "$cpuinfo" | grep -qi "arm926ej-s"; then
+                echo "sing-box_${latest_version}_openwrt_arm_arm926ej-s.ipk"
+            elif echo "$cpuinfo" | grep -qi "cortex-a15"; then
+                echo "sing-box_${latest_version}_openwrt_arm_cortex-a15_neon-vfpv4.ipk"
+            elif echo "$cpuinfo" | grep -qi "cortex-a5"; then
+                echo "sing-box_${latest_version}_openwrt_arm_cortex-a5_vfpv4.ipk"
+            elif echo "$cpuinfo" | grep -qi "cortex-a7"; then
+                if echo "$cpuinfo" | grep -qi "neon"; then
+                    echo "sing-box_${latest_version}_openwrt_arm_cortex-a7_neon-vfpv4.ipk"
+                elif echo "$cpuinfo" | grep -qi "vfpv4"; then
+                    echo "sing-box_${latest_version}_openwrt_arm_cortex-a7_vfpv4.ipk"
+                else
+                    echo "sing-box_${latest_version}_openwrt_arm_cortex-a7.ipk"
+                fi
+            elif echo "$cpuinfo" | grep -qi "cortex-a8"; then
+                echo "sing-box_${latest_version}_openwrt_arm_cortex-a8_vfpv3.ipk"
+            elif echo "$cpuinfo" | grep -qi "cortex-a9"; then
+                if echo "$cpuinfo" | grep -qi "neon"; then
+                    echo "sing-box_${latest_version}_openwrt_arm_cortex-a9_neon.ipk"
+                elif echo "$cpuinfo" | grep -qi "vfpv3-d16"; then
+                    echo "sing-box_${latest_version}_openwrt_arm_cortex-a9_vfpv3-d16.ipk"
+                else
+                    echo "sing-box_${latest_version}_openwrt_arm_cortex-a9.ipk"
+                fi
+            elif echo "$cpuinfo" | grep -qi "fa526"; then
+                echo "sing-box_${latest_version}_openwrt_arm_fa526.ipk"
+            elif echo "$cpuinfo" | grep -qi "xscale"; then
+                echo "sing-box_${latest_version}_openwrt_arm_xscale.ipk"
+            else
+                echo "sing-box_${latest_version}_openwrt_arm_cortex-a7.ipk"
+            fi
+            ;;
+        "mips")
+            if echo "$cpuinfo" | grep -qi "24kc"; then
+                if echo "$cpuinfo" | grep -qi "24kf"; then
+                    echo "sing-box_${latest_version}_openwrt_mipsel_24kc_24kf.ipk"
+                else
+                    echo "sing-box_${latest_version}_openwrt_mipsel_24kc.ipk"
+                fi
+            elif echo "$cpuinfo" | grep -qi "74kc"; then
+                echo "sing-box_${latest_version}_openwrt_mipsel_74kc.ipk"
+            elif echo "$cpuinfo" | grep -qi "mips32"; then
+                echo "sing-box_${latest_version}_openwrt_mipsel_mips32.ipk"
+            elif echo "$cpuinfo" | grep -qi "4kec"; then
+                echo "sing-box_${latest_version}_openwrt_mips_4kec.ipk"
+            elif echo "$cpuinfo" | grep -qi "mips64r2"; then
+                echo "sing-box_${latest_version}_openwrt_mips64_mips64r2.ipk"
+            elif echo "$cpuinfo" | grep -qi "octeonplus"; then
+                echo "sing-box_${latest_version}_openwrt_mips64_octeonplus.ipk"
+            else
+                echo "sing-box_${latest_version}_openwrt_mips_24kc.ipk"
+            fi
+            ;;
+        "mips64")
+            if echo "$cpuinfo" | grep -qi "mips64r2"; then
+                echo "sing-box_${latest_version}_openwrt_mips64_mips64r2.ipk"
+            elif echo "$cpuinfo" | grep -qi "octeonplus"; then
+                echo "sing-box_${latest_version}_openwrt_mips64_octeonplus.ipk"
+            else
+                echo "sing-box_${latest_version}_openwrt_mips64_mips64r2.ipk"
+            fi
+            ;;
+        "mips64el")
+            echo "sing-box_${latest_version}_openwrt_mips64el_mips64r2.ipk"
+            ;;
+        "loongarch64")
+            echo "sing-box_${latest_version}_openwrt_loongarch64_generic.ipk"
+            ;;
+        "riscv64")
+            echo "sing-box_${latest_version}_openwrt_riscv64_generic.ipk"
+            ;;
+        *)
+            log_msg "$RED" "[✗] Ошибка: Архитектура $arch не поддерживается для OpenWRT"
+            exit 1
+            ;;
+    esac
+}
+
 # Function to download and install sing-box with detailed logging using curl
 download_and_install() {
     local version_type="$1"
     local version_url="https://api.github.com/repos/${github_repo}/releases"
     local download_url=""
-    
+
+    if is_openwrt_24plus; then
+        local ipk_filename
+        ipk_filename=$(get_openwrt_ipk_filename)
+        download_url=$(curl -s "$version_url" | grep "browser_download_url.*$ipk_filename" | cut -d '"' -f 4 | head -n 1)
+        if [ -z "$download_url" ]; then
+            log_msg "$RED" "[✗] Ошибка: Не удалось найти .ipk для OpenWRT $arch"
+            exit 1
+        fi
+        log_msg "$BLUE" "Ссылка для загрузки: $download_url"
+        if ! curl -L -o "${temp_dir}/${ipk_filename}" "$download_url" --progress-bar 2>>"$log_file"; then
+            log_msg "$RED" "[✗] Ошибка: не удалось загрузить файл $ipk_filename"
+            exit 1
+        fi
+        log_msg "$GREEN" "[✓] Файл $ipk_filename успешно загружен"
+        if opkg install --force-reinstall "${temp_dir}/${ipk_filename}" 2>>"$log_file"; then
+            log_msg "$GREEN" "[✓] sing-box успешно установлен через opkg"
+        else
+            log_msg "$RED" "[✗] Ошибка при установке .ipk через opkg"
+            exit 1
+        fi
+        rm -f "${temp_dir}/${ipk_filename}"
+        return 0
+    fi
+
     # Если выбрали stable, берём ссылку на последний релиз
     case "$version_type" in
         "stable")
