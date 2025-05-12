@@ -315,21 +315,23 @@ get_openwrt_ipk_filename() {
         log_msg "$BLUE" "Available packages for your version:"
         
         # Display available packages with numbers
-        local i=1
-        local packages=()
-        while read -r file; do
-            packages+=("$file")
+        i=1
+        packages=""
+        echo "$available_files" | while read -r file; do
+            packages="$packages $file"
             echo "  $i) $file"
             i=$((i+1))
-        done < <(echo "$available_files")
+        done
         
         # Prompt user to select
         printf "Enter package number to install (1-%d): " $((i-1))
         read -r selection < /dev/tty
         
-        # Validate selection
-        if [ -n "$selection" ] && [ "$selection" -ge 1 ] && [ "$selection" -le $((i-1)) ]; then
-            selected_package="${packages[$((selection-1))]}"
+        # Преобразуем строку packages в позиционные параметры
+        set -- $packages
+        selected_package=$(eval "echo \${$selection}")
+        
+        if [ -n "$selected_package" ]; then
             log_msg "$GREEN" "[✓] Selected package: $selected_package"
             echo "$selected_package"
         else
