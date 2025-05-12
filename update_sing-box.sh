@@ -1,6 +1,33 @@
 #!/bin/sh
 # Script for updating sing-box to the latest version with architecture detection
 
+# --- Автоматическая настройка локали для поддержки русского языка ---
+# Проверяем доступные локали и выставляем подходящую
+if command -v locale >/dev/null 2>&1; then
+    if locale -a | grep -qi '^ru_RU\.utf-8$'; then
+        export LANG=ru_RU.UTF-8
+        export LC_ALL=ru_RU.UTF-8
+        export LC_CTYPE=ru_RU.UTF-8
+    elif locale -a | grep -qi '^C\.utf-8$'; then
+        export LANG=C.UTF-8
+        export LC_ALL=C.UTF-8
+        export LC_CTYPE=C.UTF-8
+    elif locale -a | grep -qi '^en_US\.utf-8$'; then
+        export LANG=en_US.UTF-8
+        export LC_ALL=en_US.UTF-8
+        export LC_CTYPE=en_US.UTF-8
+    else
+        export LANG=C
+        export LC_ALL=C
+        export LC_CTYPE=C
+    fi
+else
+    export LANG=C.UTF-8
+    export LC_ALL=C.UTF-8
+    export LC_CTYPE=C.UTF-8
+fi
+# --- конец блока локалей ---
+
 # Configuration
 log_file="/var/log/sing-box-update.log"
 install_dir="/usr/bin"
@@ -144,7 +171,10 @@ get_latest_version() {
     local version_type="$1"
     local version_url="https://api.github.com/repos/${github_repo}/releases"
     local latest_version=""
-    
+
+    # Все сообщения только в stderr!
+    log_msg "$BLUE" "Получение последней версии для $version_type..." >&2
+
     case "$version_type" in
         "stable")
             version_url="${version_url}/latest"
@@ -155,14 +185,21 @@ get_latest_version() {
             ;;
         "beta")
             latest_version=$(curl -s "$version_url" | grep '"tag_name":' | grep "beta" | head -n 1 | cut -d '"' -f 4 | sed 's/v//')
+            if [ -z "$latest_version" ]; then
+                log_msg "$YELLOW" "[!] Не удалось получить последнюю бета-версию через API, используем фиксированную версию" >&2
+                latest_version="1.12.0-beta.13"
+            fi
             ;;
     esac
-    
+
+    log_msg "$BLUE" "Полученная версия: $latest_version" >&2
+
     if [ -z "$latest_version" ]; then
-        log_msg "$RED" "[✗] Ошибка: Не удалось получить информацию о последней версии"
+        log_msg "$RED" "[✗] Ошибка: Не удалось получить информацию о последней версии" >&2
         exit 1
     fi
-    
+
+    # Только номер версии в stdout!
     echo "$latest_version"
 }
 
@@ -206,126 +243,45 @@ get_openwrt_ipk_filename() {
     local cpuinfo
     cpuinfo=$(cat /proc/cpuinfo 2>/dev/null)
     local arch_list
-    arch_list=$(opkg print-architecture | awk '{print $2}')
-    local latest="${latest_version}"
-    local found=""
+    arch_list=$(opkg print-architecture 2>/dev/null | awk '{print $2}')
+    local latest="$latest_version"
+    local found=0
+    
+    # log_msg "$BLUE" "Поиск .ipk файла для архитектуры $arch и версии $latest_version" >&2
+    
+    if [ -z "$latest" ] || [[ "$latest" == *"Ошибка"* ]]; then
+        log_msg "$RED" "[✗] Некорректная версия: $latest" >&2
+        exit 1
+    fi
 
-    case "$arch" in
-        "aarch64")
-            for candidate in aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic; do
-                if echo "$arch_list" | grep -q "^$candidate$"; then
-                    # Проверяем наличие файла в релизе
-                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
-                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                        return
-                    else
-                        found=1
-                    fi
-                fi
-            done
-            ;;
-        "x86_64")
-            for candidate in x86_64; do
-                if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
-                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                        return
-                    else
-                        found=1
-                    fi
-                fi
-            done
-            ;;
-        "i386"|"i686")
-            for candidate in i386_pentium-mmx i386_pentium4; do
-                if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
-                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                        return
-                    else
-                        found=1
-                    fi
-                fi
-            done
-            ;;
-        "armv7l"|"armv6l"|"arm")
-            for candidate in arm_arm1176jzf-s_vfp arm_arm926ej-s arm_cortex-a15_neon-vfpv4 arm_cortex-a5_vfpv4 arm_cortex-a7_neon-vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a7 arm_cortex-a8_vfpv3 arm_cortex-a9_neon arm_cortex-a9_vfpv3-d16 arm_cortex-a9 arm_fa526 arm_xscale; do
-                if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
-                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                        return
-                    else
-                        found=1
-                    fi
-                fi
-            done
-            ;;
-        "mips")
-            for candidate in mipsel_24kc_24kf mipsel_24kc mipsel_74kc mipsel_mips32 mips_4kec mips_24kc; do
-                if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
-                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                        return
-                    else
-                        found=1
-                    fi
-                fi
-            done
-            ;;
-        "mips64")
-            for candidate in mips64_mips64r2 mips64_octeonplus; do
-                if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
-                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                        return
-                    else
-                        found=1
-                    fi
-                fi
-            done
-            ;;
-        "mips64el")
-            for candidate in mips64el_mips64r2; do
-                if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
-                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                        return
-                    else
-                        found=1
-                    fi
-                fi
-            done
-            ;;
-        "loongarch64")
-            for candidate in loongarch64_generic; do
-                if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
-                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                        return
-                    else
-                        found=1
-                    fi
-                fi
-            done
-            ;;
-        "riscv64")
-            for candidate in riscv64_generic; do
-                if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
-                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                        return
-                    else
-                        found=1
-                    fi
-                fi
-            done
-            ;;
-        *)
-            log_msg "$RED" "[✗] Ошибка: Архитектура $arch не поддерживается для OpenWRT"
-            exit 1
-            ;;
-    esac
-    log_msg "$RED" "[✗] Для вашей архитектуры не найден подходящий .ipk-файл в релизе, обновление невозможно."
+    # log_msg "$BLUE" "Список поддерживаемых архитектур: $arch_list" >&2
+    
+    if [ "$arch" = "aarch64" ]; then
+        for candidate in aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic; do
+            if echo "$arch_list" | grep -q "$candidate"; then
+                # log_msg "$GREEN" "[✓] Найдена поддерживаемая архитектура: $candidate" >&2
+                echo "sing-box_${latest}_openwrt_${candidate}.ipk"
+                return 0
+            fi
+        done
+        # log_msg "$YELLOW" "[!] Архитектура не найдена в списке, используем aarch64_cortex-a53 по умолчанию" >&2
+        echo "sing-box_${latest}_openwrt_aarch64_cortex-a53.ipk"
+        return 0
+    elif [ "$arch" = "x86_64" ]; then
+        echo "sing-box_${latest}_openwrt_x86_64.ipk"
+        return 0
+    elif [ "$arch" = "i386" ] || [ "$arch" = "i686" ]; then
+        echo "sing-box_${latest}_openwrt_i386_pentium4.ipk"
+        return 0
+    elif [ "$arch" = "armv7l" ] || [ "$arch" = "armv6l" ] || [ "$arch" = "arm" ]; then
+        echo "sing-box_${latest}_openwrt_arm_cortex-a7.ipk"
+        return 0
+    elif [ "$arch" = "mips" ]; then
+        echo "sing-box_${latest}_openwrt_mips_24kc.ipk"
+        return 0
+    fi
+    
+    log_msg "$RED" "[✗] Не удалось определить .ipk файл для вашей архитектуры: $arch" >&2
     exit 1
 }
 
@@ -338,21 +294,49 @@ download_and_install() {
     if is_openwrt_24plus; then
         local ipk_filename
         ipk_filename=$(get_openwrt_ipk_filename)
-        download_url=$(curl -s "$version_url" | grep "browser_download_url.*$ipk_filename" | cut -d '"' -f 4 | head -n 1)
-        if [ -z "$download_url" ]; then
-            log_msg "$RED" "[✗] Ошибка: Не удалось найти .ipk для OpenWRT $arch"
+        
+        # log_msg "$BLUE" "Получение ссылки для скачивания файла $ipk_filename..."
+        
+        if [[ "$latest_version" == *"beta"* ]]; then
+            download_url="https://github.com/SagerNet/sing-box/releases/download/v${latest_version}/${ipk_filename}"
+            # log_msg "$BLUE" "Сформирован URL для бета-версии: $download_url"
+        else
+            download_url=$(curl -s "$version_url" | grep -o "\"browser_download_url\":\"[^\"]*${ipk_filename}\"" | cut -d '"' -f 4 | head -n 1)
+            if [ -z "$download_url" ]; then
+                download_url="https://github.com/SagerNet/sing-box/releases/download/v${latest_version}/${ipk_filename}"
+                # log_msg "$YELLOW" "[!] URL не найден через API, сформирован напрямую: $download_url"
+            fi
+        fi
+        
+        # log_msg "$BLUE" "Проверка доступности файла: $download_url"
+        local http_code
+        http_code=$(curl -sI "$download_url" | grep -i "HTTP/" | awk '{print $2}')
+        
+        if [ "$http_code" != "200" ] && [ "$http_code" != "302" ]; then
+            log_msg "$RED" "[✗] Ошибка: файл не найден по URL (HTTP код: $http_code)"
+            log_msg "$RED" "[✗] URL: $download_url"
             exit 1
         fi
+        
+        log_msg "$GREEN" "[✓] Файл найден."
         log_msg "$BLUE" "Ссылка для загрузки: $download_url"
+        
+        [ ! -d "$temp_dir" ] && mkdir -p "$temp_dir"
+        
+        log_msg "$BLUE" "Загрузка файла $ipk_filename..."
         if ! curl -L -o "${temp_dir}/${ipk_filename}" "$download_url" --progress-bar 2>>"$log_file"; then
             log_msg "$RED" "[✗] Ошибка: не удалось загрузить файл $ipk_filename"
             exit 1
         fi
         log_msg "$GREEN" "[✓] Файл $ipk_filename успешно загружен"
-        if [ -f "${temp_dir}/${ipk_filename}" ]; then
-            # Локальная установка с перехватом статусов opkg
+        
+        if [ -f "${temp_dir}/${ipk_filename}" ] && [ -s "${temp_dir}/${ipk_filename}" ]; then
+            local file_size
+            file_size=$(du -h "${temp_dir}/${ipk_filename}" | cut -f1)
+            # log_msg "$BLUE" "Размер загруженного файла: $file_size"
+            
+            log_msg "$BLUE" "Установка sing-box..."
             opkg_output=$(opkg install --force-reinstall "${temp_dir}/${ipk_filename}" 2>&1)
-            # Переводим статусы на русский и выводим с префиксом
             echo "$opkg_output" | while IFS= read -r line; do
                 case "$line" in
                     "Package * has no valid architecture, ignoring.")
@@ -361,22 +345,31 @@ download_and_install() {
                     "No packages removed.")
                         log_msg "$YELLOW" "[!] Пакеты не были удалены."
                         ;;
-                    "Installing sing-box (*) to root..."*)
+                    "Installing sing-box "*"to root..."*)
                         log_msg "$BLUE" "[→] Установка sing-box ($ipk_filename) в систему..."
                         ;;
                     "Configuring sing-box.")
                         log_msg "$BLUE" "[→] Конфигурирование sing-box."
                         ;;
                     *)
-                        # Для всего остального выводим как есть, но с префиксом
-                        if [ -n "$line" ]; then
-                            log_msg "$BLUE" "[i] $line"
-                        fi
+                        # log_msg "$BLUE" "[i] $line"
                         ;;
                 esac
             done
+            
+            if command -v sing-box > /dev/null 2>&1; then
+                log_msg "$GREEN" "[✓] sing-box успешно установлен"
+                local installed_version
+                installed_version=$(sing-box version 2>/dev/null | head -n 1 | awk '{print $3}')
+                if [ -n "$installed_version" ]; then
+                    log_msg "$GREEN" "[✓] Установлена версия sing-box: $installed_version"
+                fi
+            else
+                log_msg "$RED" "[✗] Ошибка: sing-box не был установлен или не добавлен в PATH"
+                exit 1
+            fi
         else
-            log_msg "$RED" "[✗] Ошибка: .ipk файл не найден по пути ${temp_dir}/${ipk_filename}"
+            log_msg "$RED" "[✗] Ошибка: .ipk файл не найден или имеет нулевой размер по пути ${temp_dir}/${ipk_filename}"
             exit 1
         fi
         return 0
@@ -590,7 +583,6 @@ main() {
     # Текущая и последняя версия
     local current_version
     current_version=$(get_current_version)
-    local latest_version
     latest_version=$(get_latest_version "$version_type")
     
     # Проверяем, нужна ли установка
