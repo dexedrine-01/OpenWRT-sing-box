@@ -213,10 +213,21 @@ get_openwrt_ipk_filename() {
     log_msg "$BLUE" "Supported architectures: $(echo "$arch_list" | tr '\n' ' ')"
     
     # Get list of all available release files
+    local api_url="https://api.github.com/repos/${github_repo}/releases"
+    log_msg "$BLUE" "Getting releases from: $api_url"
+    local api_response
+    api_response=$(curl -s "$api_url")
+    
+    # Check if API returned empty response
+    if [ -z "$api_response" ]; then
+        log_msg "$RED" "Error: GitHub API returned empty response" 
+        exit 1
+    fi
+    
+    log_msg "$BLUE" "Extracting .ipk files for version: ${latest}"
     local available_files
-    available_files=$(curl -s "https://api.github.com/repos/${github_repo}/releases" | 
-                     grep -Fo "\"browser_download_url.*.ipk\"" | 
-                     grep -Fo "sing-box_${latest}_openwrt_" | grep -Fo ".ipk")
+    available_files=$(echo "$api_response" | 
+                     sed -n "s/.*browser_download_url.*\(sing-box_${latest}_openwrt_[^\"]*\.ipk\).*/\1/p")
     
     if [ -z "$available_files" ]; then
         log_msg "$RED" "[✗] Error: No .ipk files found in release"
