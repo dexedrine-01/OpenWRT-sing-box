@@ -144,25 +144,48 @@ get_latest_version() {
     local version_type="$1"
     local version_url="https://api.github.com/repos/${github_repo}/releases"
     local latest_version=""
+    local api_response
     
+    # Получаем ответ API GitHub
+    api_response=$(curl -s "$version_url")
+    
+    # Проверка на пустой ответ
+    if [ -z "$api_response" ]; then
+        log_msg "$RED" "Error: GitHub API returned empty response"
+        exit 1
+    fi
+    
+    # Вывод для отладки - покажем первые 3 тега, чтобы видеть формат
+    log_msg "$BLUE" "Checking available versions on GitHub..."
+    echo "$api_response" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 3 | while read -r tag; do
+        log_msg "$BLUE" "Found tag: $tag"
+    done
+    
+    # Извлекаем версию на основе типа
     case "$version_type" in
         "stable")
-            version_url="${version_url}/latest"
-            latest_version=$(curl -s "$version_url" | grep '"tag_name":' | cut -d '"' -f 4 | sed 's/v//')
-            ;;
-        "alpha")
-            latest_version=$(curl -s "$version_url" | grep '"tag_name":' | grep -v "beta" | head -n 1 | cut -d '"' -f 4 | sed 's/v//')
+            # Получаем последнюю стабильную версию (без суффикса beta/alpha)
+            latest_version=$(echo "$api_response" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v\([0-9.]*\)".*/\1/p' | grep -v "beta\|alpha" | head -n 1)
             ;;
         "beta")
-            latest_version=$(curl -s "$version_url" | grep '"tag_name":' | grep "beta" | head -n 1 | cut -d '"' -f 4 | sed 's/v//')
+            # Получаем последнюю бета-версию
+            latest_version=$(echo "$api_response" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v\([0-9.]*-beta[0-9.]*\)".*/\1/p' | head -n 1)
+            ;;
+        "alpha")
+            # Получаем последнюю альфа-версию
+            latest_version=$(echo "$api_response" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v\([0-9.]*-alpha[0-9.]*\)".*/\1/p' | head -n 1)
             ;;
     esac
     
     if [ -z "$latest_version" ]; then
-        log_msg "$RED" "[✗] Error: Failed to get information about the latest version"
+        log_msg "$RED" "Error: Failed to get information about the latest version"
+        # Выводим доступные тэги для отладки
+        log_msg "$BLUE" "Available tags:"
+        echo "$api_response" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 5
         exit 1
     fi
     
+    log_msg "$GREEN" "Found latest $version_type version: $latest_version"
     echo "$latest_version"
 }
 
