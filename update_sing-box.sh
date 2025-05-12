@@ -203,105 +203,97 @@ is_openwrt_24plus() {
 # Function to get the name of the .ipk file for OpenWRT 24.10 based on architecture and CPU
 get_openwrt_ipk_filename() {
     local arch=$(uname -m)
-    local cpuinfo
-    cpuinfo=$(cat /proc/cpuinfo 2>/dev/null)
     local arch_list
-    arch_list=$(opkg print-architecture | awk '{print $2}')
+    arch_list=$(opkg print-architecture 2>/dev/null | awk '{print $2}')
     local latest="${latest_version}"
-    local version_info
     local found_file=""
-    
-    # Download release information once
-    version_info=$(curl -s "https://api.github.com/repos/${github_repo}/releases" | grep "browser_download_url.*openwrt.*\.ipk")
     
     # For debugging, output available architectures
     log_msg "$BLUE" "System architecture: $arch"
     log_msg "$BLUE" "Supported architectures: $(echo "$arch_list" | tr '\n' ' ')"
     
+    # Get list of all available release files
+    local available_files
+    available_files=$(curl -s "https://api.github.com/repos/${github_repo}/releases" | 
+                     grep -o "\"browser_download_url.*\.ipk\"" | 
+                     grep -o "sing-box_${latest}_openwrt_[^\"]*\.ipk")
+    
+    if [ -z "$available_files" ]; then
+        log_msg "$RED" "[✗] Error: No .ipk files found in release"
+        exit 1
+    fi
+    
+    log_msg "$BLUE" "Available .ipk files for version ${latest}:"
+    echo "$available_files" | while read -r file; do
+        log_msg "$BLUE" "  - $file"
+    done
+    
+    # Try to find a match for our architecture
     case "$arch" in
         "aarch64")
-            for candidate in aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic; do
-                if echo "$arch_list" | grep -q "^$candidate$"; then
-                    # Check if file exists in release
-                    if echo "$version_info" | grep -q "sing-box_${latest}_openwrt_${candidate}"; then
-                        found_file="sing-box_${latest}_openwrt_${candidate}.ipk"
+            # For aarch64 try to find matching variant
+            for arch_variant in $(echo "$arch_list"); do
+                if echo "$arch_variant" | grep -q "aarch64"; then
+                    # Try direct match first
+                    if echo "$available_files" | grep -q "sing-box_${latest}_openwrt_${arch_variant}.ipk"; then
+                        found_file="sing-box_${latest}_openwrt_${arch_variant}.ipk"
                         break
                     fi
                 fi
             done
+            
+            # If no direct match, try common aarch64 variants
+            if [ -z "$found_file" ]; then
+                for variant in aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic; do
+                    if echo "$available_files" | grep -q "sing-box_${latest}_openwrt_${variant}.ipk"; then
+                        found_file="sing-box_${latest}_openwrt_${variant}.ipk"
+                        break
+                    fi
+                done
+            fi
             ;;
         "x86_64")
-            if echo "$arch_list" | grep -q "^x86_64$"; then
-                if echo "$version_info" | grep -q "sing-box_${latest}_openwrt_x86_64"; then
-                    found_file="sing-box_${latest}_openwrt_x86_64.ipk"
-                fi
+            # Try to find x86_64 variant
+            if echo "$available_files" | grep -q "sing-box_${latest}_openwrt_x86_64.ipk"; then
+                found_file="sing-box_${latest}_openwrt_x86_64.ipk"
             fi
             ;;
         "i386"|"i686")
-            for candidate in i386_pentium-mmx i386_pentium4; do
-                if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if echo "$version_info" | grep -q "sing-box_${latest}_openwrt_${candidate}"; then
-                        found_file="sing-box_${latest}_openwrt_${candidate}.ipk"
-                        break
-                    fi
+            # Try to find i386 variant
+            for variant in i386_pentium-mmx i386_pentium4; do
+                if echo "$available_files" | grep -q "sing-box_${latest}_openwrt_${variant}.ipk"; then
+                    found_file="sing-box_${latest}_openwrt_${variant}.ipk"
+                    break
                 fi
             done
             ;;
         "armv7l"|"armv6l"|"arm")
-            for candidate in arm_arm1176jzf-s_vfp arm_arm926ej-s arm_cortex-a15_neon-vfpv4 arm_cortex-a5_vfpv4 arm_cortex-a7_neon-vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a7 arm_cortex-a8_vfpv3 arm_cortex-a9_neon arm_cortex-a9_vfpv3-d16 arm_cortex-a9 arm_fa526 arm_xscale; do
-                if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if echo "$version_info" | grep -q "sing-box_${latest}_openwrt_${candidate}"; then
-                        found_file="sing-box_${latest}_openwrt_${candidate}.ipk"
+            # Try to find arm variant
+            for arch_variant in $(echo "$arch_list"); do
+                if echo "$arch_variant" | grep -q "arm"; then
+                    if echo "$available_files" | grep -q "sing-box_${latest}_openwrt_${arch_variant}.ipk"; then
+                        found_file="sing-box_${latest}_openwrt_${arch_variant}.ipk"
                         break
                     fi
                 fi
             done
-            ;;
-        "mips")
-            for candidate in mipsel_24kc_24kf mipsel_24kc mipsel_74kc mipsel_mips32 mips_4kec mips_24kc mips_mips32; do
-                if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if echo "$version_info" | grep -q "sing-box_${latest}_openwrt_${candidate}"; then
-                        found_file="sing-box_${latest}_openwrt_${candidate}.ipk"
+            
+            # If no direct match, try common arm variants
+            if [ -z "$found_file" ]; then
+                for variant in arm_cortex-a7_neon-vfpv4 arm_cortex-a9_vfpv3-d16 arm_cortex-a15_neon-vfpv4; do
+                    if echo "$available_files" | grep -q "sing-box_${latest}_openwrt_${variant}.ipk"; then
+                        found_file="sing-box_${latest}_openwrt_${variant}.ipk"
                         break
                     fi
-                fi
-            done
+                done
+            fi
             ;;
-        "mips64")
-            for candidate in mips64_mips64r2 mips64_octeonplus; do
-                if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if echo "$version_info" | grep -q "sing-box_${latest}_openwrt_${candidate}"; then
-                        found_file="sing-box_${latest}_openwrt_${candidate}.ipk"
-                        break
-                    fi
-                fi
-            done
-            ;;
-        "mips64el")
-            for candidate in mips64el_mips64r2; do
-                if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if echo "$version_info" | grep -q "sing-box_${latest}_openwrt_${candidate}"; then
-                        found_file="sing-box_${latest}_openwrt_${candidate}.ipk"
-                        break
-                    fi
-                fi
-            done
-            ;;
-        "loongarch64")
-            for candidate in loongarch64_generic; do
-                if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if echo "$version_info" | grep -q "sing-box_${latest}_openwrt_${candidate}"; then
-                        found_file="sing-box_${latest}_openwrt_${candidate}.ipk"
-                        break
-                    fi
-                fi
-            done
-            ;;
-        "riscv64")
-            for candidate in riscv64_generic; do
-                if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if echo "$version_info" | grep -q "sing-box_${latest}_openwrt_${candidate}"; then
-                        found_file="sing-box_${latest}_openwrt_${candidate}.ipk"
+        "mips"|"mipsel")
+            # Try to find mips variant
+            for arch_variant in $(echo "$arch_list"); do
+                if echo "$arch_variant" | grep -q "mips"; then
+                    if echo "$available_files" | grep -q "sing-box_${latest}_openwrt_${arch_variant}.ipk"; then
+                        found_file="sing-box_${latest}_openwrt_${arch_variant}.ipk"
                         break
                     fi
                 fi
@@ -313,11 +305,37 @@ get_openwrt_ipk_filename() {
             ;;
     esac
     
+    # If we found a file, return it
     if [ -n "$found_file" ]; then
+        log_msg "$GREEN" "[✓] Found suitable package: $found_file"
         echo "$found_file"
     else
-        log_msg "$RED" "[✗] No suitable .ipk file found for your architecture in the release, update not possible."
-        exit 1
+        # If not found, let user select from available options
+        log_msg "$YELLOW" "[!] Warning: Could not automatically determine package for your architecture"
+        log_msg "$BLUE" "Available packages for your version:"
+        
+        # Display available packages with numbers
+        local i=1
+        local packages=()
+        while read -r file; do
+            packages+=("$file")
+            echo "  $i) $file"
+            i=$((i+1))
+        done < <(echo "$available_files")
+        
+        # Prompt user to select
+        printf "Enter package number to install (1-%d): " $((i-1))
+        read -r selection < /dev/tty
+        
+        # Validate selection
+        if [ -n "$selection" ] && [ "$selection" -ge 1 ] && [ "$selection" -le $((i-1)) ]; then
+            selected_package="${packages[$((selection-1))]}"
+            log_msg "$GREEN" "[✓] Selected package: $selected_package"
+            echo "$selected_package"
+        else
+            log_msg "$RED" "[✗] Error: Invalid selection"
+            exit 1
+        fi
     fi
 }
 
@@ -337,7 +355,7 @@ download_and_install() {
             exit 1
         fi
         
-        download_url=$(curl -s "$version_url" | grep "browser_download_url.*$ipk_filename" | cut -d '"' -f 4 | head -n 1)
+        download_url=$(curl -s "$version_url" | grep "browser_download_url.*${ipk_filename}" | cut -d '"' -f 4 | head -n 1)
         if [ -z "$download_url" ]; then
             log_msg "$RED" "[✗] Error: Failed to find download link for $ipk_filename"
             exit 1
@@ -609,8 +627,10 @@ main() {
     
     # Remove old version
     if [ -f "${install_dir}/sing-box" ]; then
+        # Create backup before removal
+        cp "${install_dir}/sing-box" "${backup_file}"
         rm -f "${install_dir}/sing-box"
-        log_msg "$GREEN" "[✓] Old sing-box version removed"
+        log_msg "$GREEN" "[✓] Old sing-box version removed and backed up"
     else
         log_msg "$YELLOW" "[!] Warning: Old sing-box version not found"
     fi
