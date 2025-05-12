@@ -19,7 +19,7 @@ RESET="\033[0m"
 log_msg() {
     local color="$1"
     local message="$2"
-    # Используем printf, чтобы избежать проблем с echo -e
+    # Using printf to avoid problems with echo -e
     printf "%b\n" "${color}${message}${RESET}" | tee -a "$log_file"
 }
 
@@ -49,23 +49,23 @@ check_disk_space() {
     available_space_temp=$(df -k "$(dirname "$temp_path")" | awk 'NR==2 {print $4}')
     
     if [ -z "$available_space_install" ] || [ -z "$available_space_temp" ]; then
-        log_msg "$YELLOW" "[!] Предупреждение: Не удалось проверить доступное пространство"
+        log_msg "$YELLOW" "[!] Warning: Unable to check available space"
         return 0
     fi
     
     if [ "$available_space_install" -lt "$required_space" ]; then
-        log_msg "$RED" "[✗] Ошибка: Недостаточно места в $(dirname "$install_path")"
-        log_msg "$RED" "    Доступно: $((available_space_install / 1024)) МБ, требуется минимум: $((required_space / 1024)) МБ"
+        log_msg "$RED" "[✗] Error: Not enough space in $(dirname "$install_path")"
+        log_msg "$RED" "    Available: $((available_space_install / 1024)) MB, required minimum: $((required_space / 1024)) MB"
         return 1
     fi
     
     if [ "$available_space_temp" -lt "$required_space" ]; then
-        log_msg "$RED" "[✗] Ошибка: Недостаточно места во временной директории $(dirname "$temp_path")"
-        log_msg "$RED" "    Доступно: $((available_space_temp / 1024)) МБ, требуется минимум: $((required_space / 1024)) МБ"
+        log_msg "$RED" "[✗] Error: Not enough space in temporary directory $(dirname "$temp_path")"
+        log_msg "$RED" "    Available: $((available_space_temp / 1024)) MB, required minimum: $((required_space / 1024)) MB"
         return 1
     fi
     
-    log_msg "$GREEN" "[✓] Достаточно свободного места для обновления"
+    log_msg "$GREEN" "[✓] Sufficient free space for update"
     return 0
 }
 
@@ -92,32 +92,32 @@ detect_architecture() {
             file="linux-mips.tar.gz"
             ;;
         *)
-            log_msg "$RED" "[✗] Ошибка: Архитектура $arch не поддерживается"
+            log_msg "$RED" "[✗] Error: Architecture $arch is not supported"
             exit 1
             ;;
     esac
     
-    log_msg "$GREEN" "[✓] Архитектура поддерживается: $arch"
+    log_msg "$GREEN" "[✓] Supported architecture: $arch"
     return 0
 }
 
 # Function to rollback to the previous version
 rollback() {
-    log_msg "$YELLOW" "Откатываемся на предыдущую версию..."
+    log_msg "$YELLOW" "Rolling back to previous version..."
     
     if [ -f "$backup_file" ]; then
         mv "$backup_file" "${install_dir}/sing-box"
         chmod +x "${install_dir}/sing-box"
         
         if service sing-box restart 2>>"$log_file"; then
-            log_msg "$GREEN" "[✓] Откат выполнен успешно"
+            log_msg "$GREEN" "[✓] Rollback completed successfully"
         else
-            log_msg "$RED" "[✗] Ошибка при откате и перезапуске sing-box"
+            log_msg "$RED" "[✗] Error during rollback and restart of sing-box"
             exit 1
         fi
     else
-        log_msg "$RED" "[✗] Предыдущая версия не найдена!"
-        log_msg "$RED" "[✗] Требуется ручная установка sing-box"
+        log_msg "$RED" "[✗] Previous version not found!"
+        log_msg "$RED" "[✗] Manual installation of sing-box required"
         exit 1
     fi
 }
@@ -128,11 +128,11 @@ get_current_version() {
     if command_exists sing-box; then
         current_version=$(sing-box version 2>/dev/null | head -n 1 | awk '{print $3}')
         if [ -z "$current_version" ]; then
-            log_msg "$YELLOW" "[!] Не удалось определить текущую версию sing-box"
+            log_msg "$YELLOW" "[!] Unable to determine current sing-box version"
             current_version="unknown"
         fi
     else
-        log_msg "$YELLOW" "[!] sing-box не установлен"
+        log_msg "$YELLOW" "[!] sing-box is not installed"
         current_version="not installed"
     fi
     
@@ -159,7 +159,7 @@ get_latest_version() {
     esac
     
     if [ -z "$latest_version" ]; then
-        log_msg "$RED" "[✗] Ошибка: Не удалось получить информацию о последней версии"
+        log_msg "$RED" "[✗] Error: Failed to get information about the latest version"
         exit 1
     fi
     
@@ -168,21 +168,21 @@ get_latest_version() {
 
 # Function to remove old sing-box version
 remove_old_version() {
-    log_msg "$BLUE" "Удаление старой версии sing-box..."
+    log_msg "$BLUE" "Removing old sing-box version..."
     
-    # Останавливаем сервис перед удалением
+    # Stop service before removing
     if service sing-box stop 2>>"$log_file"; then
-        log_msg "$GREEN" "[✓] Сервис sing-box остановлен"
+        log_msg "$GREEN" "[✓] sing-box service stopped"
     else
-        log_msg "$YELLOW" "[!] Предупреждение: Не удалось остановить сервис sing-box"
+        log_msg "$YELLOW" "[!] Warning: Failed to stop sing-box service"
     fi
     
-    # Удаляем старый исполняемый файл
+    # Remove old executable
     if [ -f "${install_dir}/sing-box" ]; then
         rm -f "${install_dir}/sing-box"
-        log_msg "$GREEN" "[✓] Старая версия sing-box удалена"
+        log_msg "$GREEN" "[✓] Old sing-box version removed"
     else
-        log_msg "$YELLOW" "[!] Предупреждение: Старая версия sing-box не найдена"
+        log_msg "$YELLOW" "[!] Warning: Old sing-box version not found"
     fi
 }
 
@@ -208,42 +208,41 @@ get_openwrt_ipk_filename() {
     local arch_list
     arch_list=$(opkg print-architecture | awk '{print $2}')
     local latest="${latest_version}"
-    local found=""
-
+    local version_info
+    local found_file=""
+    
+    # Download release information once
+    version_info=$(curl -s "https://api.github.com/repos/${github_repo}/releases" | grep "browser_download_url.*openwrt.*\.ipk")
+    
+    # For debugging, output available architectures
+    log_msg "$BLUE" "System architecture: $arch"
+    log_msg "$BLUE" "Supported architectures: $(echo "$arch_list" | tr '\n' ' ')"
+    
     case "$arch" in
         "aarch64")
             for candidate in aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic; do
                 if echo "$arch_list" | grep -q "^$candidate$"; then
-                    # Проверяем наличие файла в релизе
-                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
-                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                        return
-                    else
-                        found=1
+                    # Check if file exists in release
+                    if echo "$version_info" | grep -q "sing-box_${latest}_openwrt_${candidate}"; then
+                        found_file="sing-box_${latest}_openwrt_${candidate}.ipk"
+                        break
                     fi
                 fi
             done
             ;;
         "x86_64")
-            for candidate in x86_64; do
-                if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
-                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                        return
-                    else
-                        found=1
-                    fi
+            if echo "$arch_list" | grep -q "^x86_64$"; then
+                if echo "$version_info" | grep -q "sing-box_${latest}_openwrt_x86_64"; then
+                    found_file="sing-box_${latest}_openwrt_x86_64.ipk"
                 fi
-            done
+            fi
             ;;
         "i386"|"i686")
             for candidate in i386_pentium-mmx i386_pentium4; do
                 if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
-                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                        return
-                    else
-                        found=1
+                    if echo "$version_info" | grep -q "sing-box_${latest}_openwrt_${candidate}"; then
+                        found_file="sing-box_${latest}_openwrt_${candidate}.ipk"
+                        break
                     fi
                 fi
             done
@@ -251,23 +250,19 @@ get_openwrt_ipk_filename() {
         "armv7l"|"armv6l"|"arm")
             for candidate in arm_arm1176jzf-s_vfp arm_arm926ej-s arm_cortex-a15_neon-vfpv4 arm_cortex-a5_vfpv4 arm_cortex-a7_neon-vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a7 arm_cortex-a8_vfpv3 arm_cortex-a9_neon arm_cortex-a9_vfpv3-d16 arm_cortex-a9 arm_fa526 arm_xscale; do
                 if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
-                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                        return
-                    else
-                        found=1
+                    if echo "$version_info" | grep -q "sing-box_${latest}_openwrt_${candidate}"; then
+                        found_file="sing-box_${latest}_openwrt_${candidate}.ipk"
+                        break
                     fi
                 fi
             done
             ;;
         "mips")
-            for candidate in mipsel_24kc_24kf mipsel_24kc mipsel_74kc mipsel_mips32 mips_4kec mips_24kc; do
+            for candidate in mipsel_24kc_24kf mipsel_24kc mipsel_74kc mipsel_mips32 mips_4kec mips_24kc mips_mips32; do
                 if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
-                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                        return
-                    else
-                        found=1
+                    if echo "$version_info" | grep -q "sing-box_${latest}_openwrt_${candidate}"; then
+                        found_file="sing-box_${latest}_openwrt_${candidate}.ipk"
+                        break
                     fi
                 fi
             done
@@ -275,11 +270,9 @@ get_openwrt_ipk_filename() {
         "mips64")
             for candidate in mips64_mips64r2 mips64_octeonplus; do
                 if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
-                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                        return
-                    else
-                        found=1
+                    if echo "$version_info" | grep -q "sing-box_${latest}_openwrt_${candidate}"; then
+                        found_file="sing-box_${latest}_openwrt_${candidate}.ipk"
+                        break
                     fi
                 fi
             done
@@ -287,11 +280,9 @@ get_openwrt_ipk_filename() {
         "mips64el")
             for candidate in mips64el_mips64r2; do
                 if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
-                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                        return
-                    else
-                        found=1
+                    if echo "$version_info" | grep -q "sing-box_${latest}_openwrt_${candidate}"; then
+                        found_file="sing-box_${latest}_openwrt_${candidate}.ipk"
+                        break
                     fi
                 fi
             done
@@ -299,11 +290,9 @@ get_openwrt_ipk_filename() {
         "loongarch64")
             for candidate in loongarch64_generic; do
                 if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
-                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                        return
-                    else
-                        found=1
+                    if echo "$version_info" | grep -q "sing-box_${latest}_openwrt_${candidate}"; then
+                        found_file="sing-box_${latest}_openwrt_${candidate}.ipk"
+                        break
                     fi
                 fi
             done
@@ -311,22 +300,25 @@ get_openwrt_ipk_filename() {
         "riscv64")
             for candidate in riscv64_generic; do
                 if echo "$arch_list" | grep -q "^$candidate$"; then
-                    if curl -s "https://api.github.com/repos/${github_repo}/releases" | grep -q "${latest}_openwrt_${candidate}\.ipk"; then
-                        echo "sing-box_${latest}_openwrt_${candidate}.ipk"
-                        return
-                    else
-                        found=1
+                    if echo "$version_info" | grep -q "sing-box_${latest}_openwrt_${candidate}"; then
+                        found_file="sing-box_${latest}_openwrt_${candidate}.ipk"
+                        break
                     fi
                 fi
             done
             ;;
         *)
-            log_msg "$RED" "[✗] Ошибка: Архитектура $arch не поддерживается для OpenWRT"
+            log_msg "$RED" "[✗] Error: Architecture $arch is not supported for OpenWRT"
             exit 1
             ;;
     esac
-    log_msg "$RED" "[✗] Для вашей архитектуры не найден подходящий .ipk-файл в релизе, обновление невозможно."
-    exit 1
+    
+    if [ -n "$found_file" ]; then
+        echo "$found_file"
+    else
+        log_msg "$RED" "[✗] No suitable .ipk file found for your architecture in the release, update not possible."
+        exit 1
+    fi
 }
 
 # Function to download and install sing-box with detailed logging using curl
@@ -338,37 +330,44 @@ download_and_install() {
     if is_openwrt_24plus; then
         local ipk_filename
         ipk_filename=$(get_openwrt_ipk_filename)
+        
+        # Check if filename was successfully obtained
+        if [ -z "$ipk_filename" ]; then
+            log_msg "$RED" "[✗] Error: Failed to determine .ipk filename"
+            exit 1
+        fi
+        
         download_url=$(curl -s "$version_url" | grep "browser_download_url.*$ipk_filename" | cut -d '"' -f 4 | head -n 1)
         if [ -z "$download_url" ]; then
-            log_msg "$RED" "[✗] Ошибка: Не удалось найти .ipk для OpenWRT $arch"
+            log_msg "$RED" "[✗] Error: Failed to find download link for $ipk_filename"
             exit 1
         fi
-        log_msg "$BLUE" "Ссылка для загрузки: $download_url"
+        log_msg "$BLUE" "Download link: $download_url"
         if ! curl -L -o "${temp_dir}/${ipk_filename}" "$download_url" --progress-bar 2>>"$log_file"; then
-            log_msg "$RED" "[✗] Ошибка: не удалось загрузить файл $ipk_filename"
+            log_msg "$RED" "[✗] Error: Failed to download file $ipk_filename"
             exit 1
         fi
-        log_msg "$GREEN" "[✓] Файл $ipk_filename успешно загружен"
+        log_msg "$GREEN" "[✓] File $ipk_filename successfully downloaded"
         if [ -f "${temp_dir}/${ipk_filename}" ]; then
-            # Локальная установка с перехватом статусов opkg
+            # Local installation with opkg status capture
             opkg_output=$(opkg install --force-reinstall "${temp_dir}/${ipk_filename}" 2>&1)
-            # Переводим статусы на русский и выводим с префиксом
+            # Translate statuses to English and output with prefix
             echo "$opkg_output" | while IFS= read -r line; do
                 case "$line" in
                     "Package * has no valid architecture, ignoring.")
-                        log_msg "$YELLOW" "[!] Пакет не поддерживает архитектуру, пропускаем."
+                        log_msg "$YELLOW" "[!] Package does not support architecture, skipping."
                         ;;
                     "No packages removed.")
-                        log_msg "$YELLOW" "[!] Пакеты не были удалены."
+                        log_msg "$YELLOW" "[!] No packages were removed."
                         ;;
                     "Installing sing-box (*) to root..."*)
-                        log_msg "$BLUE" "[→] Установка sing-box ($ipk_filename) в систему..."
+                        log_msg "$BLUE" "[→] Installing sing-box ($ipk_filename) into system..."
                         ;;
                     "Configuring sing-box.")
-                        log_msg "$BLUE" "[→] Конфигурирование sing-box."
+                        log_msg "$BLUE" "[→] Configuring sing-box."
                         ;;
                     *)
-                        # Для всего остального выводим как есть, но с префиксом
+                        # For everything else, output as is, but with prefix
                         if [ -n "$line" ]; then
                             log_msg "$BLUE" "[i] $line"
                         fi
@@ -376,104 +375,104 @@ download_and_install() {
                 esac
             done
         else
-            log_msg "$RED" "[✗] Ошибка: .ipk файл не найден по пути ${temp_dir}/${ipk_filename}"
+            log_msg "$RED" "[✗] Error: .ipk file not found at path ${temp_dir}/${ipk_filename}"
             exit 1
         fi
         return 0
     fi
 
-    # Если выбрали stable, берём ссылку на последний релиз
+    # If stable was selected, get the link to the latest release
     case "$version_type" in
         "stable")
             version_url="${version_url}/latest"
             ;;
     esac
     
-    # Получаем ссылку на файл для нашей архитектуры
+    # Get link to file for our architecture
     download_url=$(curl -s "$version_url" | grep "browser_download_url.*$file" | cut -d '"' -f 4 | head -n 1)
     if [ -z "$download_url" ]; then
-        log_msg "$RED" "[✗] Ошибка: Не удалось найти ссылку для скачивания для архитектуры $arch"
+        log_msg "$RED" "[✗] Error: Failed to find download link for architecture $arch"
         exit 1
     fi
 
-    log_msg "$BLUE" "Ссылка для загрузки: $download_url"
+    log_msg "$BLUE" "Download link: $download_url"
 
-    # Получаем размер файла
+    # Get file size
     file_size=$(curl -sI "$download_url" | grep -i "Content-Length" | awk '{print $2}' | tr -d '\r')
     if [ -n "$file_size" ] && [ "$file_size" -gt 0 ] 2>/dev/null; then
-        # Если получили валидный размер, выводим
+        # If received valid size, output
         file_size_mb=$(echo "scale=2; $file_size/1048576" | bc 2>/dev/null || echo "$((file_size / 1048576))")
-        log_msg "$BLUE" "Размер файла для загрузки: ${file_size_mb} МБ"
+        log_msg "$BLUE" "File size for download: ${file_size_mb} MB"
     else
-        # Иначе пропускаем вывод о размере
+        # Otherwise skip size output
         file_size=""
     fi
 
-    # Загружаем файл
+    # Download file
     local filename
     filename=$(basename "$download_url")
-    log_msg "$BLUE" "Начинается загрузка файла: $filename"
+    log_msg "$BLUE" "Starting file download: $filename"
 
     if command_exists curl; then
         if ! curl -L -o "${temp_dir}/${filename}" "$download_url" --progress-bar 2>>"$log_file"; then
-            log_msg "$RED" "[✗] Ошибка: не удалось загрузить файл $filename"
+            log_msg "$RED" "[✗] Error: Failed to download file $filename"
             exit 1
         fi
     else
-        log_msg "$RED" "[✗] Ошибка: curl не установлен"
+        log_msg "$RED" "[✗] Error: curl is not installed"
         exit 1
     fi
     
-    log_msg "$GREEN" "[✓] Файл $filename успешно загружен"
+    log_msg "$GREEN" "[✓] File $filename successfully downloaded"
 
-    # Проверяем целостность (по размеру), если Content-Length не нулевой
+    # Check integrity (by size), if Content-Length is not zero
     if [ -f "${temp_dir}/${filename}" ]; then
         downloaded_size=$(wc -c < "${temp_dir}/${filename}")
         if [ -n "$file_size" ] && [ "$file_size" -gt 0 ]; then
             if [ "$downloaded_size" -ne "$file_size" ]; then
-                log_msg "$RED" "[✗] Ошибка: размер загруженного файла не соответствует ожидаемому"
-                log_msg "$RED" "    Ожидаемый размер: $file_size байт, фактический: $downloaded_size байт"
+                log_msg "$RED" "[✗] Error: Downloaded file size does not match expected"
+                log_msg "$RED" "    Expected size: $file_size bytes, actual: $downloaded_size bytes"
                 exit 1
             fi
         fi
     else
-        log_msg "$RED" "[✗] Ошибка: файл не был загружен"
+        log_msg "$RED" "[✗] Error: File was not downloaded"
         exit 1
     fi
 
-    # Распаковка
-    log_msg "$BLUE" "Распаковка архива..."
+    # Unpacking
+    log_msg "$BLUE" "Unpacking archive..."
     local folder_name
     folder_name=$(tar -tzf "${temp_dir}/${filename}" 2>>"$log_file" | head -1 | cut -f1 -d"/")
     if [ -z "$folder_name" ]; then
-        log_msg "$RED" "[✗] Ошибка: не удалось определить имя папки в архиве"
+        log_msg "$RED" "[✗] Error: Failed to determine folder name in archive"
         exit 1
     fi
     
     if ! tar -xzf "${temp_dir}/${filename}" -C "$temp_dir" 2>>"$log_file"; then
-        log_msg "$RED" "[✗] Ошибка при распаковке архива"
+        log_msg "$RED" "[✗] Error unpacking archive"
         exit 1
     fi
 
-    # Установка новой версии
-    log_msg "$BLUE" "Установка новой версии..."
+    # Install new version
+    log_msg "$BLUE" "Installing new version..."
     if [ ! -f "${temp_dir}/${folder_name}/sing-box" ]; then
-        log_msg "$RED" "[✗] Ошибка: исполняемый файл sing-box не найден в распакованном архиве"
+        log_msg "$RED" "[✗] Error: sing-box executable not found in unpacked archive"
         exit 1
     fi
     
     cp "${temp_dir}/${folder_name}/sing-box" "${install_dir}/"
     chmod +x "${install_dir}/sing-box"
 
-    # Проверяем, что исполняемый файл на месте
+    # Check that executable is in place
     if [ ! -x "${install_dir}/sing-box" ]; then
-        log_msg "$RED" "[✗] Ошибка: не удалось установить новую версию sing-box"
-        log_msg "$RED" "[✗] Требуется ручная установка sing-box"
+        log_msg "$RED" "[✗] Error: Failed to install new sing-box version"
+        log_msg "$RED" "[✗] Manual installation of sing-box required"
         exit 1
     fi
 
-    # Очистка временных файлов
-    log_msg "$BLUE" "Очистка временных файлов..."
+    # Clean up temporary files
+    log_msg "$BLUE" "Cleaning up temporary files..."
     rm -rf "${temp_dir:?}/${folder_name}" "${temp_dir}/${filename}"
     
     return 0
@@ -481,26 +480,26 @@ download_and_install() {
 
 # Function to restart services
 restart_services() {
-    log_msg "$BLUE" "Перезапуск сервисов..."
+    log_msg "$BLUE" "Restarting services..."
     
-    # Сначала перезапускаем сеть
+    # First restart network
     if ! service network restart 2>>"$log_file"; then
-        log_msg "$YELLOW" "[!] Предупреждение: Ошибка при перезапуске сети"
-        log_msg "$YELLOW" "[!] Рекомендуется перезапустить сеть вручную"
+        log_msg "$YELLOW" "[!] Warning: Error restarting network"
+        log_msg "$YELLOW" "[!] Manual network restart recommended"
     else
-        log_msg "$GREEN" "[✓] Сеть успешно перезапущена"
+        log_msg "$GREEN" "[✓] Network successfully restarted"
     fi
     
-    # Небольшая пауза, чтобы сеть успела подняться
+    # Small pause to allow network to come up
     sleep 2
     
-    # Затем перезапускаем sing-box
+    # Then restart sing-box
     if ! service sing-box restart 2>>"$log_file"; then
-        log_msg "$RED" "[✗] Ошибка при перезапуске сервиса sing-box"
+        log_msg "$RED" "[✗] Error restarting sing-box service"
         return 1
     fi
     
-    log_msg "$GREEN" "[✓] Сервис sing-box успешно перезапущен"
+    log_msg "$GREEN" "[✓] sing-box service successfully restarted"
     return 0
 }
 
@@ -524,7 +523,7 @@ check_memory() {
         fi
     fi
     
-    # Если не получилось узнать через /proc/meminfo, пробуем через free
+    # If unable to check via /proc/meminfo, try using free
     if [ -z "$available_memory" ] || [ "$available_memory" -eq 0 ]; then
         if command_exists free; then
             available_memory=$(free | grep -i 'Mem:' | awk '{print $7}')
@@ -532,17 +531,17 @@ check_memory() {
     fi
     
     if [ -z "$available_memory" ] || [ "$available_memory" -eq 0 ]; then
-        log_msg "$YELLOW" "[!] Предупреждение: Не удалось проверить доступную память"
+        log_msg "$YELLOW" "[!] Warning: Unable to check available memory"
         return 0
     fi
     
     if [ "$available_memory" -lt "$required_memory" ]; then
-        log_msg "$RED" "[✗] Ошибка: Недостаточно оперативной памяти для обновления"
-        log_msg "$RED" "    Доступно: $((available_memory / 1024)) МБ, требуется минимум: $((required_memory / 1024)) МБ"
+        log_msg "$RED" "[✗] Error: Not enough RAM for update"
+        log_msg "$RED" "    Available: $((available_memory / 1024)) MB, required minimum: $((required_memory / 1024)) MB"
         return 1
     fi
     
-    log_msg "$GREEN" "[✓] Достаточно оперативной памяти для обновления"
+    log_msg "$GREEN" "[✓] Sufficient RAM for update"
     return 0
 }
 
@@ -550,97 +549,97 @@ check_memory() {
 main() {
     create_dirs
     
-    # Если параметр rollback, делаем откат
+    # If rollback parameter, do rollback
     if [ "$1" = "rollback" ]; then
         rollback
         exit 0
     fi
     
-    # Определяем архитектуру
+    # Determine architecture
     detect_architecture
     
-    # Меню выбора типа версии
-    printf "Выберите тип версии:\n"
-    printf "1. Релизная (stable)\n"
-    printf "2. Альфа (alpha)\n"
-    printf "3. Бета (beta)\n"
-    printf "Введите ваш выбор (1, 2, 3): "
+    # Version type selection menu
+    printf "Select version type:\n"
+    printf "1. Release (stable)\n"
+    printf "2. Alpha (alpha)\n"
+    printf "3. Beta (beta)\n"
+    printf "Enter your choice (1, 2, 3): "
     read choice < /dev/tty
     
     local version_type
     case "$choice" in
         1)
             version_type="stable"
-            log_msg "$BLUE" "Вы выбрали релизную версию"
+            log_msg "$BLUE" "You selected release version"
             ;;
         2)
             version_type="alpha"
-            log_msg "$BLUE" "Вы выбрали альфа-версию"
+            log_msg "$BLUE" "You selected alpha version"
             ;;
         3)
             version_type="beta"
-            log_msg "$BLUE" "Вы выбрали бета-версию"
+            log_msg "$BLUE" "You selected beta version"
             ;;
         *)
-            log_msg "$RED" "[✗] Ошибка: Некорректный выбор. Пожалуйста, выберите 1, 2 или 3."
+            log_msg "$RED" "[✗] Error: Invalid choice. Please select 1, 2, or 3."
             exit 1
             ;;
     esac
     
-    # Текущая и последняя версия
+    # Current and latest version
     local current_version
     current_version=$(get_current_version)
     local latest_version
     latest_version=$(get_latest_version "$version_type")
     
-    # Проверяем, нужна ли установка
+    # Check if installation is needed
     if [ "$current_version" = "$latest_version" ]; then
-        log_msg "$GREEN" "[✓] Уже установлена последняя версия: $current_version"
+        log_msg "$GREEN" "[✓] Latest version already installed: $current_version"
         exit 0
     fi
     
-    log_msg "$BLUE" "Обновляем с версии $current_version до $latest_version"
+    log_msg "$BLUE" "Updating from version $current_version to $latest_version"
     
-    # Останавливаем сервис перед удалением
+    # Stop service before removal
     if service sing-box stop 2>>"$log_file"; then
-        log_msg "$GREEN" "[✓] Сервис sing-box остановлен"
+        log_msg "$GREEN" "[✓] sing-box service stopped"
     else
-        log_msg "$YELLOW" "[!] Предупреждение: Не удалось остановить сервис sing-box"
+        log_msg "$YELLOW" "[!] Warning: Failed to stop sing-box service"
     fi
     
-    # Удаляем старую версию
+    # Remove old version
     if [ -f "${install_dir}/sing-box" ]; then
         rm -f "${install_dir}/sing-box"
-        log_msg "$GREEN" "[✓] Старая версия sing-box удалена"
+        log_msg "$GREEN" "[✓] Old sing-box version removed"
     else
-        log_msg "$YELLOW" "[!] Предупреждение: Старая версия sing-box не найдена"
+        log_msg "$YELLOW" "[!] Warning: Old sing-box version not found"
     fi
     
-    # Проверяем доступное место
+    # Check available space
     if ! check_disk_space; then
-        log_msg "$RED" "[✗] Обновление отменено из-за нехватки дискового пространства"
+        log_msg "$RED" "[✗] Update canceled due to insufficient disk space"
         exit 1
     fi
     
-    # Проверяем память
+    # Check memory
     if ! check_memory; then
-        log_msg "$RED" "[✗] Обновление отменено из-за нехватки памяти"
+        log_msg "$RED" "[✗] Update canceled due to insufficient memory"
         exit 1
     fi
     
-    # Скачивание и установка
+    # Download and install
     download_and_install "$version_type"
     
-    # Перезапуск сервисов
+    # Restart services
     if ! restart_services; then
-        log_msg "$RED" "[✗] Ошибка при обновлении. Выполняется откат..."
+        log_msg "$RED" "[✗] Error during update. Performing rollback..."
         rollback
         exit 1
     fi
     
-    log_msg "$GREEN" "[✓] Обновление завершено успешно до версии $latest_version"
+    log_msg "$GREEN" "[✓] Update completed successfully to version $latest_version"
     exit 0
 }
 
-# Запускаем основную функцию
+# Run main function
 main "$@"
