@@ -357,7 +357,7 @@ download_and_install() {
             exit 1
         fi
         
-        download_url=$(curl -s "$version_url" | grep "browser_download_url.*${ipk_filename}" | cut -d '"' -f 4 | head -n 1)
+        download_url=$(curl -s "$version_url" | grep -F "browser_download_url" | grep -F "${ipk_filename}" | cut -d '"' -f 4 | head -n 1)
         if [ -z "$download_url" ]; then
             log_msg "$RED" "[✗] Error: Failed to find download link for $ipk_filename"
             exit 1
